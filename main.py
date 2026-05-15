@@ -363,40 +363,27 @@ def detect_character(text: str):
 def detect_user_husbands(uid):
 
     uid = str(uid)
-
     if uid not in users_memory:
         return []
-
     info = users_memory[uid]
-
     if not info.get("wife"):
         return []
-
     name = info.get("name", "").lower()
-
     husbands = []
-
     if "итачи" in name:
         husbands.append("itachi")
-
     if "кисаме" in name:
         husbands.append("kisame")
-
     if "дейдара" in name:
         husbands.append("deidara")
-
     if "сасори" in name:
         husbands.append("sasori")
-
     if "хидан" in name:
         husbands.append("hidan")
-
     if "какузу" in name:
         husbands.append("kakuzu")
-
     if "саске" in name:
         husbands.append("sasuke")
-
     return husbands
 
 # ========================= RANDOM HUSBAND =========================
@@ -405,9 +392,7 @@ def choose_husband(husbands):
 
     return (
         random.choice(husbands)
-
         if len(husbands) > 1
-
         else (
             husbands[0]
             if husbands
@@ -458,13 +443,10 @@ def build_multi_character_list(main_character):
 def choose_responder(message_text):
 
     target = detect_character(message_text)
-
     if target:
-
         partner = AKATSUKI_MEMBERS[
             target
         ]["partner"]
-
         if (
             partner
             and random.randint(1, 100) <= 12
@@ -474,13 +456,11 @@ def choose_responder(message_text):
                 True,
                 target
             )
-
         return (
             target,
             False,
             None
         )
-
     return (
         random.choice(
             list(AKATSUKI_MEMBERS.keys())
@@ -495,9 +475,7 @@ async def add_character_reaction(
     message,
     character
 ):
-
     try:
-
         await message.add_reaction(
             random.choice(
                 AKATSUKI_MEMBERS[
@@ -508,16 +486,12 @@ async def add_character_reaction(
 
     except:
         pass
-
 async def add_multi_reactions(
     message,
     characters
 ):
-
     for character in characters:
-
         if random.random() < 0.45:
-
             await add_character_reaction(
                 message,
                 character
@@ -533,7 +507,6 @@ def build_character_prompt(characters):
     )
 
 def format_character_names(characters):
-
     return ", ".join(
         AKATSUKI_MEMBERS[c]["name"]
         for c in characters
@@ -548,7 +521,7 @@ async def ask_deepseek(
 ):
     global http_session
 
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/v1/chat/completions"
+    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
