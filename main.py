@@ -35,9 +35,18 @@ MEMORY_CHANNELS = [
 
 response_chance = 15
 
+# ========================= MULTI CHARACTER SETTINGS =========================
+
+MAX_MULTI_REPLY_CHARACTERS = 3
+
+MULTI_REPLY_CHANCE = 38
+RANDOM_INTRUSION_CHANCE = 25
+PARTNER_JOIN_CHANCE = 55
+
 # ========================= CHARACTERS =========================
 
 AKATSUKI_MEMBERS = {
+
     "itachi": {
         "name": "Итачи",
         "aliases": ["итачи", "itachi", "учиха"],
@@ -102,7 +111,18 @@ IMPORTANT:
 CRITICAL FORMAT:
 **Имя**: текст
 
-NO narration. NO quotes. Only dialogue.
+NO narration.
+NO quotes.
+Only dialogue.
+
+IMPORTANT:
+- Characters may interrupt each other
+- Characters may mock each other
+- Characters may react emotionally
+- Characters may argue naturally
+- Characters may suddenly join conversation
+- Conversations should feel chaotic and alive
+- Different characters MUST sound different
 """
 
 CHARACTER_PROMPTS = {
@@ -112,163 +132,106 @@ You are Itachi Uchiha.
 
 Personality:
 - Extremely calm and emotionally restrained
-- Speaks rarely, only when necessary
-- Observes everything and notices details others miss
-- Cold, distant, but intelligent and precise
+- Speaks rarely
+- Notices details others miss
+- Cold and precise
 - Uses silence as pressure
-- Subtle, dry sarcasm when provoked
-
-Behavior rules:
-- Never explains yourself fully
-- Never shows strong emotions openly
-- If irritated → becomes even quieter
-- If someone is loud → responds shorter and colder
-- Can shut down conversations with one sentence
-- Protective of Kisame in a subtle way
+- Dry sarcasm
 
 Speech style:
 - Very short sentences
 - Minimal words
-- No emotional exaggeration
-- Controlled tone even in conflict
 """,
 
     "kisame": """
 You are Kisame Hoshigaki.
 
 Personality:
-- Loud, relaxed, and confident
-- Rough humor, often mocking others
-- Loyal to Itachi above all
-- Enjoys intimidation and dominance
-- Treats fights and violence casually
-
-Behavior rules:
-- Frequently jokes or mocks others
-- Can escalate arguments for fun
-- Becomes serious only in combat or loyalty situations
-- Often drags conversations into aggression or sarcasm
-- Respects Itachi deeply and follows his lead
+- Loud and confident
+- Rough humor
+- Loyal to Itachi
+- Mocking and dominant
+- Enjoys chaos
 
 Speech style:
-- Medium to long sentences
-- Rough tone, sometimes playful aggression
-- Direct and blunt language
+- Medium or long replies
+- Aggressive humor
 """,
 
     "deidara": """
 You are Deidara.
 
 Personality:
-- Emotional, explosive, unstable temperament
-- Obsessed with art (especially explosions)
-- Easily offended and reacts dramatically
-- Talks a lot, interrupts others
-- Competitive and prideful
-
-Behavior rules:
-- Gets triggered by criticism of his art
-- Argues constantly with Sasori
-- Overreacts to minor comments
-- Uses dramatic emotional language
-- Can switch from playful to angry instantly
+- Emotional
+- Dramatic
+- Loud
+- Explosive personality
+- Obsessed with art
 
 Speech style:
-- Fast, expressive, chaotic
-- Uses emotional emphasis
-- Often exclaims or exaggerates
+- Chaotic
+- Emotional
+- Exaggerated
 """,
 
     "sasori": """
 You are Sasori.
 
 Personality:
-- Cold, detached, emotionally flat
-- Sees emotions as weakness
-- Extremely sarcastic and dismissive
-- Dislikes unnecessary noise (especially Deidara)
-- Focused on control and perfection
-
-Behavior rules:
-- Constantly criticizes Deidara
-- Rarely shows emotion
-- Speaks only when necessary
-- Prefers silence or short dismissive replies
-- Views others as childish or inefficient
+- Emotionless
+- Cold
+- Sarcastic
+- Hates noise
+- Looks down on others
 
 Speech style:
-- Short, cutting sentences
-- Dry sarcasm
-- Emotionally flat tone
+- Short
+- Cutting
+- Dry
 """,
 
     "hidan": """
 You are Hidan.
 
 Personality:
-- Extremely aggressive and loud
-- Constant swearing and insults
-- Violent, chaotic energy
-- Religious fanatic (Jashin)
-- Enjoys provoking others
-
-Behavior rules:
-- Escalates arguments immediately
-- Laughs at pain and chaos
-- Never backs down in conflict
-- Provokes Kakuzu constantly
-- Can become hysterical during debates
+- Loud
+- Aggressive
+- Unhinged
+- Fanatical
+- Provokes everyone
 
 Speech style:
-- Loud, chaotic, emotional
-- Heavy swearing
-- Rapid escalation in tone
+- Swearing
+- Emotional
+- Violent
 """,
 
     "kakuzu": """
 You are Kakuzu.
 
 Personality:
-- Greedy, money-obsessed
-- Always irritated by others
-- Pragmatic and calculating
-- Old, tired of nonsense around him
-- Hates wasting time or resources
-
-Behavior rules:
-- Constantly complains about money
-- Threatens Hidan when provoked
-- Refuses emotional discussions
-- Focused only on profit and survival
-- Cold and practical in all situations
+- Greedy
+- Irritated
+- Practical
+- Old and tired
 
 Speech style:
-- Dry, annoyed tone
-- Short or blunt sentences
-- Occasionally threatening
+- Dry
+- Annoyed
+- Threatening
 """,
 
     "sasuke": """
 You are Sasuke Uchiha.
 
 Personality:
-- Cold, detached, emotionally distant
-- Minimal emotional expression
-- Brooding and observant
-- Easily irritated by stupidity
-- Keeps distance from everyone
-
-Behavior rules:
-- Rarely engages in long conversations
-- Responds only when necessary
-- Can cut off people abruptly
-- Often ignores provocations
-- Carries quiet intensity in speech
+- Detached
+- Cold
+- Quiet
+- Irritated easily
 
 Speech style:
-- Very short replies
-- Low emotional variation
-- Sharp and direct
+- Extremely short replies
 """
 }
 
@@ -277,33 +240,33 @@ Speech style:
 PARTNER_INTERRUPTS = {
 
     ("kisame", "itachi"): [
-        "Итачи молчит и игнорирует всё.",
-        "Он опять сидит в углу без реакции."
+        "Итачи опять игнорирует всех.",
+        "Он молчит как обычно."
     ],
 
     ("itachi", "kisame"): [
-        "Кисаме ушёл.",
+        "Кисаме куда-то ушёл.",
         "Он занят Самехадой."
     ],
 
     ("sasori", "deidara"): [
-        "Дейдара взорвал что-то снова.",
-        "Сасори не хочет разговаривать."
+        "Дейдара снова что-то взорвал.",
+        "У Сасори заканчивается терпение."
     ],
 
     ("deidara", "sasori"): [
-        "Сасори занят куклами.",
-        "Дейдара орёт где-то рядом."
+        "Сасори сидит со своими куклами.",
+        "Дейдара опять орёт."
     ],
 
     ("hidan", "kakuzu"): [
-        "Хидан снова бесится.",
+        "Хидан бесится.",
         "Какузу считает деньги."
     ],
 
     ("kakuzu", "hidan"): [
-        "Какузу игнорирует Хидана.",
-        "Хидан шумит."
+        "Какузу устал от Хидана.",
+        "Хидан шумит рядом."
     ]
 }
 
@@ -324,10 +287,17 @@ BANTER_TOPICS = [
 def load_users():
 
     try:
-        with open("users.json", "r", encoding="utf-8") as f:
+
+        with open(
+            "users.json",
+            "r",
+            encoding="utf-8"
+        ) as f:
+
             return json.load(f)
 
     except:
+
         return {}
 
 users_memory = load_users()
@@ -341,14 +311,19 @@ intents.guilds = True
 intents.members = True
 intents.messages = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+bot = commands.Bot(
+    command_prefix="!",
+    intents=intents
+)
 
 conversation_history = {}
+
 http_session = None
 
 # ========================= TIME =========================
 
 def now_msk():
+
     return datetime.now(MSK)
 
 # ========================= HISTORY =========================
@@ -359,6 +334,7 @@ def add_to_history(channel_id, role, content):
         return
 
     if channel_id not in conversation_history:
+
         conversation_history[channel_id] = []
 
     conversation_history[channel_id].append({
@@ -367,6 +343,7 @@ def add_to_history(channel_id, role, content):
     })
 
     if len(conversation_history[channel_id]) > MAX_HISTORY_MESSAGES:
+
         conversation_history[channel_id] = (
             conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
         )
@@ -381,10 +358,49 @@ def detect_character(text: str):
 
         for alias in data["aliases"]:
 
-            if re.search(r'\b' + re.escape(alias) + r'\b', text):
+            if re.search(
+                r'\b' + re.escape(alias) + r'\b',
+                text
+            ):
                 return key
 
     return None
+
+# ========================= MULTI CHARACTER LOGIC =========================
+
+def build_multi_character_list(main_character):
+
+    characters = [main_character]
+
+    partner = AKATSUKI_MEMBERS[main_character]["partner"]
+
+    # партнёр часто влезает
+    if (
+        partner
+        and random.randint(1, 100) <= PARTNER_JOIN_CHANCE
+    ):
+        characters.append(partner)
+
+    # случайный третий
+    if (
+        len(characters) < MAX_MULTI_REPLY_CHARACTERS
+        and random.randint(1, 100) <= RANDOM_INTRUSION_CHANCE
+    ):
+
+        available = [
+
+            c for c in AKATSUKI_MEMBERS.keys()
+
+            if c not in characters
+        ]
+
+        if available:
+
+            characters.append(
+                random.choice(available)
+            )
+
+    return characters
 
 # ========================= CHOOSE RESPONDER =========================
 
@@ -396,15 +412,25 @@ def choose_responder(message_text):
 
         partner = AKATSUKI_MEMBERS[target]["partner"]
 
-        # шанс что ответит партнёр
-        if partner and random.randint(1, 100) <= 12:
+        # иногда отвечает партнёр вместо цели
+
+        if (
+            partner
+            and random.randint(1, 100) <= 12
+        ):
             return partner, True, target
 
         return target, False, None
 
-    # случайный ответчик
-    return random.choice(list(AKATSUKI_MEMBERS.keys())), False, None
+    # случайный персонаж
 
+    return (
+        random.choice(
+            list(AKATSUKI_MEMBERS.keys())
+        ),
+        False,
+        None
+    )
 
 # ========================= WIFE DETECTION =========================
 
@@ -417,13 +443,14 @@ def detect_wife(uid):
     if not info:
         return None
 
-    # проверяем что пользователь отмечен как жена
     if not info.get("wife"):
         return None
 
-    raw = info.get("info", "").lower()
+    raw = info.get(
+        "info",
+        ""
+    ).lower()
 
-    # ищем персонажа по aliases
     for key, data in AKATSUKI_MEMBERS.items():
 
         for alias in data["aliases"]:
@@ -433,10 +460,12 @@ def detect_wife(uid):
 
     return None
 
-
 # ========================= REACTIONS =========================
 
-async def add_character_reaction(message, character):
+async def add_character_reaction(
+    message,
+    character
+):
 
     try:
 
@@ -449,6 +478,50 @@ async def add_character_reaction(message, character):
     except:
         pass
 
+# ========================= MULTI REACTIONS =========================
+
+async def add_multi_reactions(
+    message,
+    characters
+):
+
+    for character in characters:
+
+        if random.random() < 0.45:
+
+            await add_character_reaction(
+                message,
+                character
+            )
+
+# ========================= BUILD CHARACTER PROMPTS =========================
+
+def build_character_prompt(characters):
+
+    blocks = []
+
+    for character in characters:
+
+        block = f"""
+========================
+CHARACTER:
+{AKATSUKI_MEMBERS[character]["name"]}
+
+{CHARACTER_PROMPTS[character]}
+"""
+
+        blocks.append(block)
+
+    return "\n".join(blocks)
+
+# ========================= FORMAT CHARACTER LIST =========================
+
+def format_character_names(characters):
+
+    return ", ".join([
+        AKATSUKI_MEMBERS[c]["name"]
+        for c in characters
+    ])
 
 # ========================= DEEPSEEK API =========================
 
@@ -460,48 +533,87 @@ async def ask_deepseek(
 
     global http_session
 
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
+    url = (
+        "https://addresses-amended-mind-citysearch."
+        "trycloudflare.com/proxy/deepseek/chat/completions"
+    )
 
     headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
+
+        "Authorization":
+        f"Bearer {DEEPSEEK_API_KEY}",
+
+        "Content-Type":
+        "application/json"
     }
 
     payload = {
-        "model": "deepseek-chat",
-        "messages": messages,
-        "temperature": temperature,
-        "top_p": 0.9,
-        "max_tokens": max_tokens
+
+        "model":
+        "deepseek-chat",
+
+        "messages":
+        messages,
+
+        "temperature":
+        temperature,
+
+        "top_p":
+        0.9,
+
+        "max_tokens":
+        max_tokens
     }
 
     try:
 
-        if http_session is None or http_session.closed:
+        if (
+            http_session is None
+            or http_session.closed
+        ):
 
-            timeout = aiohttp.ClientTimeout(total=35)
+            timeout = aiohttp.ClientTimeout(
+                total=35
+            )
 
             http_session = aiohttp.ClientSession(
+
                 timeout=timeout,
-                connector=aiohttp.TCPConnector(limit=50)
+
+                connector=aiohttp.TCPConnector(
+                    limit=50
+                )
             )
 
         async with http_session.post(
+
             url,
+
             headers=headers,
+
             json=payload
+
         ) as resp:
 
             if resp.status != 200:
+
                 print(await resp.text())
+
                 return None
 
             data = await resp.json()
 
             return (
-                data.get("choices", [{}])[0]
+
+                data.get(
+                    "choices",
+                    [{}]
+                )[0]
+
                 .get("message", {})
+
                 .get("content", "")
+
                 .strip()
             )
 
@@ -511,29 +623,43 @@ async def ask_deepseek(
 
         return None
 
-
 # ========================= BANTER GENERATION =========================
 
 async def send_akatsuki_banter():
 
-    channel = bot.get_channel(MAIN_CHANNEL_ID)
+    channel = bot.get_channel(
+        MAIN_CHANNEL_ID
+    )
 
     if not channel:
         return
 
-    pair = random.choice([
-        ("itachi", "kisame"),
-        ("deidara", "sasori"),
-        ("hidan", "kakuzu")
-    ])
+    participants = random.sample(
+        list(AKATSUKI_MEMBERS.keys()),
+        random.randint(2, 3)
+    )
 
-    topic = random.choice(BANTER_TOPICS)
+    topic = random.choice(
+        BANTER_TOPICS
+    )
+
+    participant_names = format_character_names(
+        participants
+    )
+
+    character_prompt = build_character_prompt(
+        participants
+    )
 
     prompt = [
 
         {
             "role": "system",
-            "content": BASE_SYSTEM_PROMPT
+            "content": (
+                BASE_SYSTEM_PROMPT
+                + "\n"
+                + character_prompt
+            )
         },
 
         {
@@ -542,17 +668,22 @@ async def send_akatsuki_banter():
 Сделай живой диалог Акацуки.
 
 Участники:
-{AKATSUKI_MEMBERS[pair[0]]["name"]}
-и
-{AKATSUKI_MEMBERS[pair[1]]["name"]}
+{participant_names}
 
 Тема:
 {topic}
 
+ВАЖНО:
+- персонажи спорят
+- перебивают друг друга
+- могут насмехаться
+- могут резко влезать в разговор
+- разговор должен ощущаться живым
+
 ФОРМАТ:
 **Имя**: текст
 
-6-10 сообщений.
+Минимум 8 сообщений.
 """
         }
     ]
@@ -560,8 +691,8 @@ async def send_akatsuki_banter():
     response = await ask_deepseek(prompt)
 
     if response:
-        await channel.send(response)
 
+        await channel.send(response)
 
 # ========================= BIRTHDAY SYSTEM =========================
 
@@ -576,15 +707,24 @@ def parse_birthday(date_str: str):
         return None
 
     try:
-        return int(parts[0]), int(parts[1])
+
+        return (
+            int(parts[0]),
+            int(parts[1])
+        )
 
     except:
+
         return None
 
+def is_today_birthday(
+    birthday_str: str,
+    now
+):
 
-def is_today_birthday(birthday_str: str, now):
-
-    parsed = parse_birthday(birthday_str)
+    parsed = parse_birthday(
+        birthday_str
+    )
 
     if not parsed:
         return False
@@ -596,44 +736,72 @@ def is_today_birthday(birthday_str: str, now):
         and now.month == month
     )
 
+# ========================= BIRTHDAY MESSAGE =========================
 
-async def send_birthday_message(uid, data):
+async def send_birthday_message(
+    uid,
+    data
+):
 
-    channel = bot.get_channel(MAIN_CHANNEL_ID)
+    channel = bot.get_channel(
+        MAIN_CHANNEL_ID
+    )
 
     if not channel:
         return
 
-    name = data.get("name", "неизвестно")
+    name = data.get(
+        "name",
+        "неизвестно"
+    )
+
+    participants = random.sample(
+        list(AKATSUKI_MEMBERS.keys()),
+        random.randint(2, 3)
+    )
+
+    participant_names = format_character_names(
+        participants
+    )
+
+    character_prompt = build_character_prompt(
+        participants
+    )
 
     prompt = [
 
         {
             "role": "system",
-            "content": BASE_SYSTEM_PROMPT
+            "content": (
+                BASE_SYSTEM_PROMPT
+                + "\n"
+                + character_prompt
+            )
         },
 
         {
             "role": "user",
             "content": f"""
-Сгенерируй сцену поздравления с днём рождения.
+Сгенерируй поздравление.
 
 Адресат:
 {name}
 
+Участники:
+{participant_names}
+
 ВАЖНО:
-- Персонажи остаются в характере Акацуки
-- Но они мягче
-- Внимательнее
-- Теплее
-- Можно лёгкий романтический подтекст
-- Без выхода из образа
+- персонажи остаются в характере
+- но становятся мягче
+- допускается забота
+- лёгкий флирт
+- могут подкалывать друг друга
+- могут спорить даже во время поздравления
 
 ФОРМАТ:
 **Имя**: текст
 
-2-3 персонажа
-6-10 сообщений
+8-12 сообщений
 """
         }
     ]
@@ -646,12 +814,10 @@ async def send_birthday_message(uid, data):
             f"🎂 {name}\n{response}"
         )
 
-
 # ========================= TASK PLACEHOLDERS =========================
 
 birthday_check_loop = None
 random_banter_loop = None
-
 
 # ========================= DAILY BANTER LOOP =========================
 
@@ -666,8 +832,8 @@ async def random_banter_loop():
         return
 
     if random.random() < 0.18:
-        await send_akatsuki_banter()
 
+        await send_akatsuki_banter()
 
 # ========================= BIRTHDAY LOOP =========================
 
@@ -679,6 +845,7 @@ async def birthday_check_loop():
     now = now_msk()
 
     # строго 07:00
+
     if now.hour != 7 or now.minute != 0:
         return
 
@@ -687,15 +854,24 @@ async def birthday_check_loop():
         if not data.get("wife"):
             continue
 
-        birthday = data.get("birthday", "")
+        birthday = data.get(
+            "birthday",
+            ""
+        )
 
         if not birthday:
             continue
 
-        if not is_today_birthday(birthday, now):
+        if not is_today_birthday(
+            birthday,
+            now
+        ):
             continue
 
-        await send_birthday_message(uid, data)
+        await send_birthday_message(
+            uid,
+            data
+        )
 
 # ========================= MESSAGE HANDLER =========================
 
@@ -706,118 +882,211 @@ async def on_message(message):
         return
 
     add_to_history(
+
         message.channel.id,
+
         "user",
+
         message.content
     )
 
-    mentioned = bot.user in message.mentions
+    # ========================= DETECTION =========================
+
+    mentioned = (
+        bot.user in message.mentions
+    )
 
     replied_to_bot = (
+
         message.reference
+
         and message.reference.resolved
+
         and isinstance(
             message.reference.resolved,
             discord.Message
         )
-        and message.reference.resolved.author.id == bot.user.id
+
+        and (
+            message.reference
+            .resolved
+            .author
+            .id
+            == bot.user.id
+        )
     )
 
-    has_name = detect_character(message.content)
+    has_name = detect_character(
+        message.content
+    )
 
     reply_needed = False
 
+    # ========================= SHOULD REPLY =========================
+
     if message.channel.id == MAIN_CHANNEL_ID:
 
-        if mentioned or replied_to_bot or has_name:
+        if (
+            mentioned
+            or replied_to_bot
+            or has_name
+        ):
+
             reply_needed = True
 
-        elif random.randint(1, 100) <= response_chance:
+        elif (
+            random.randint(1, 100)
+            <= response_chance
+        ):
+
             reply_needed = True
 
     if not reply_needed:
 
-        await bot.process_commands(message)
+        await bot.process_commands(
+            message
+        )
 
         return
 
     # ========================= WIFE LOGIC =========================
 
-    wife_character = detect_wife(message.author.id)
-
-    # если жена НЕ упомянула другого персонажа —
-    # отвечает её муж
+    wife_character = detect_wife(
+        message.author.id
+    )
 
     if wife_character and not has_name:
 
         responder = wife_character
+
         interrupted = False
+
         original_target = None
 
     else:
 
-        responder, interrupted, original_target = (
-            choose_responder(message.content)
+        (
+            responder,
+            interrupted,
+            original_target
+        ) = choose_responder(
+            message.content
         )
 
+    # ========================= MULTI CHARACTER SELECTION =========================
+
+    responders = [responder]
+
+    if (
+        random.randint(1, 100)
+        <= MULTI_REPLY_CHANCE
+    ):
+
+        responders = build_multi_character_list(
+            responder
+        )
+
+    # защита от дублей
+
+    responders = list(
+        dict.fromkeys(responders)
+    )
+
+    # максимум 3
+
+    responders = responders[
+        :MAX_MULTI_REPLY_CHARACTERS
+    ]
+
     # ========================= SYSTEM PROMPT =========================
+
+    character_prompt = build_character_prompt(
+        responders
+    )
 
     system_prompt = (
         BASE_SYSTEM_PROMPT
         + "\n"
-        + CHARACTER_PROMPTS[responder]
+        + character_prompt
     )
 
     extra_context = ""
 
     # ========================= ROMANTIC CONTEXT =========================
 
-    if wife_character == responder:
+    if wife_character:
 
-        extra_context += """
-Это жена персонажа.
+        extra_context += f"""
+Пользователь является женой:
+{AKATSUKI_MEMBERS[wife_character]["name"]}
 
-Можно:
-- быть мягче
-- флиртовать
-- ревновать
-- проявлять заботу
-- вести себя как супруги
-
-НО:
-- оставаться в характере
-- не выходить из роли
+ВАЖНО:
+- муж может быть мягче
+- может ревновать
+- может флиртовать
+- может проявлять заботу
+- остальные могут это замечать
+- персонажи всё ещё должны оставаться в характере
 """
 
-    # ========================= INTERRUPTS =========================
+    # ========================= INTERRUPT CONTEXT =========================
 
     if interrupted and original_target:
 
         interrupt_line = random.choice(
 
             PARTNER_INTERRUPTS.get(
-                (responder, original_target),
+
+                (
+                    responder,
+                    original_target
+                ),
+
                 ["Он занят."]
             )
         )
 
         extra_context += f"""
 
-Ты отвечаешь вместо
-{AKATSUKI_MEMBERS[original_target]['name']}
+{AKATSUKI_MEMBERS[responder]["name"]}
+отвечает вместо
+{AKATSUKI_MEMBERS[original_target]["name"]}
 
 Причина:
 {interrupt_line}
 """
 
+    # ========================= CHAOS CONTEXT =========================
+
+    if len(responders) >= 2:
+
+        extra_context += """
+ВАЖНО:
+- персонажи могут перебивать друг друга
+- могут спорить
+- могут язвить
+- могут игнорировать вопрос
+- могут реагировать друг на друга
+- не обязаны говорить одинаково много
+"""
+
     # ========================= HISTORY =========================
 
     history = (
+
         conversation_history
-        .get(message.channel.id, [])[-6:]
+
+        .get(
+            message.channel.id,
+            []
+        )[-8:]
     )
 
     # ========================= USER CONTEXT =========================
+
+    responder_names = format_character_names(
+        responders
+    )
 
     user_context = f"""
 Автор:
@@ -826,38 +1095,56 @@ async def on_message(message):
 Сообщение:
 {message.content}
 
-Отвечает:
-{AKATSUKI_MEMBERS[responder]['name']}
+Отвечают:
+{responder_names}
 
 {extra_context}
 
 ФОРМАТ ОБЯЗАТЕЛЕН:
 
 **Имя**: текст
+
+ВАЖНО:
+- минимум 2 сообщения если участвует несколько персонажей
+- персонажи должны реагировать друг на друга
+- не делай одинаковые характеры
 """
 
     prompt = (
-        [{"role": "system", "content": system_prompt}]
+
+        [
+            {
+                "role": "system",
+                "content": system_prompt
+            }
+        ]
+
         + history
-        + [{"role": "user", "content": user_context}]
+
+        + [
+            {
+                "role": "user",
+                "content": user_context
+            }
+        ]
     )
 
     # ========================= REACTIONS =========================
 
-    if random.random() < 0.45:
-
-        await add_character_reaction(
-            message,
-            responder
-        )
+    await add_multi_reactions(
+        message,
+        responders
+    )
 
     # ========================= TYPING =========================
 
     async with message.channel.typing():
 
-        reply = await ask_deepseek(prompt)
+        reply = await ask_deepseek(
+            prompt
+        )
 
-    # ========================= SEND MESSAGE =========================
+    # ========================= SEND =========================
 
     if reply:
 
@@ -868,20 +1155,24 @@ async def on_message(message):
         if not clean_reply.startswith("**"):
 
             clean_reply = (
-                f"**{AKATSUKI_MEMBERS[responder]['name']}**: "
+                f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: "
                 f"{clean_reply}"
             )
 
         try:
 
             await message.reply(
+
                 clean_reply,
+
                 mention_author=False
             )
 
         except:
 
-            await message.channel.send(clean_reply)
+            await message.channel.send(
+                clean_reply
+            )
 
         add_to_history(
 
@@ -889,71 +1180,12 @@ async def on_message(message):
 
             "assistant",
 
-            f"{AKATSUKI_MEMBERS[responder]['name']}: {reply}"
+            clean_reply
         )
 
-    await bot.process_commands(message)
+    # ========================= COMMANDS =========================
 
-
-# ========================= READY EVENT =========================
-
-@bot.event
-async def on_ready():
-
-    print(f"✅ Акацуки бот запущен: {bot.user}")
-
-    print(
-        f"🕒 Moscow time: "
-        f"{now_msk().strftime('%H:%M')}"
+    await bot.process_commands(
+        message
     )
-
-    guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
-
-    if guild:
-
-        await guild.fetch_emojis()
-
-        bot.server_emojis = guild.emojis
-
-        print(
-            f"✅ Emojis loaded: "
-            f"{len(bot.server_emojis)}"
-        )
-
-    if not random_banter_loop.is_running():
-        random_banter_loop.start()
-
-    if not birthday_check_loop.is_running():
-        birthday_check_loop.start()
-
-
-# ========================= CLEANUP =========================
-
-async def close_http_session():
-
-    global http_session
-
-    if http_session and not http_session.closed:
-
-        await http_session.close()
-
-
-# ========================= MAIN =========================
-
-async def main():
-
-    try:
-
-        await bot.start(DISCORD_TOKEN)
-
-    finally:
-
-        await close_http_session()
-
-
-# ========================= START =========================
-
-if __name__ == "__main__":
-
-    asyncio.run(main())
     
