@@ -294,10 +294,13 @@ def add_to_history(channel_id, role, content):
 
 def detect_character(text: str):
     text = text.lower()
+
     for key, data in AKATSUKI_MEMBERS.items():
         for alias in data["aliases"]:
-            if re.search(r'\b' + re.escape(alias) + r'\b', text):
+
+            if alias.lower() in text:
                 return key
+
     return None
 
 # ========================= FIND USER HUSBANDS =========================
