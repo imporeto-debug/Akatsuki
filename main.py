@@ -298,8 +298,8 @@ def detect_character(text: str):
     for key, data in AKATSUKI_MEMBERS.items():
         for alias in data["aliases"]:
 
-            if alias.lower() in text:
-                return key
+            if re.search(rf"\b{re.escape(alias.lower())}\b", text):
+    return key
 
     return None
 
