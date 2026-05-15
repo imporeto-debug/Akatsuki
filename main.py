@@ -372,6 +372,7 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
     global http_session
 
     url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
+    
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
