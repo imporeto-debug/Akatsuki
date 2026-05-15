@@ -559,7 +559,7 @@ async def on_message(message):
     and getattr(message.reference, "resolved", None)
     and isinstance(message.reference.resolved, discord.Message)
     and message.reference.resolved.author.id == bot.user.id
-)
+    )
     has_name = detect_character(message.content)
 
     # ========================= SHOULD REPLY =========================
