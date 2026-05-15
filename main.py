@@ -306,23 +306,28 @@ def detect_character(text: str):
 # ========================= FIND USER HUSBANDS =========================
 
 def detect_user_husbands(uid):
-    info = users_memory.get(str(uid))
-    if not info or not info.get("wife"):
+    uid = str(uid)
+    if uid not in users_memory:
         return []
-    name_field = info.get("name", "").lower()
-    mapping = {
-        "итачи": "itachi",
-        "кисаме": "kisame",
-        "дейдара": "deidara",
-        "сасори": "sasori",
-        "хидан": "hidan",
-        "какузу": "kakuzu",
-        "саске": "sasuke",
-    }
+    info = users_memory[uid]
+    if not info.get("wife"):
+        return []
+    name = info.get("name", "").lower()
     husbands = []
-    for russian_name, key in mapping.items():
-        if russian_name in name_field:
-            husbands.append(key)
+    if "итачи" in name:
+        husbands.append("itachi")
+    if "кисаме" in name:
+        husbands.append("kisame")
+    if "дейдара" in name:
+        husbands.append("deidara")
+    if "сасори" in name:
+        husbands.append("sasori")
+    if "хидан" in name:
+        husbands.append("hidan")
+    if "какузу" in name:
+        husbands.append("kakuzu")
+    if "саске" in name:
+        husbands.append("sasuke")
     return husbands
 
 # ========================= RANDOM HUSBAND =========================
