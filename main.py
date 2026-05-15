@@ -579,17 +579,13 @@ async def on_message(message):
 
     # ========================= WIFE DETECTION =========================
 
-    user_husbands = detect_user_husbands(message.author.id)
-    wife_character = None
-
-    if user_husbands:
-        mentioned_husband = next(
-            (h for h in user_husbands
-             if any(a.lower() in message.content.lower() for a in AKATSUKI_MEMBERS[h]["aliases"])),
-            None,
-        )
-        wife_character = mentioned_husband or choose_husband(user_husbands)
-
+user_husbands = detect_user_husbands(message.author.id)
+wife_character = None
+for husband in user_husbands:
+    aliases = AKATSUKI_MEMBERS[husband]["aliases"]
+    if any(alias.lower() in message.content.lower() for alias in aliases):
+        wife_character = husband
+        break
     # ========================= MAIN RESPONDER =========================
 
     if wife_character and not has_name:
