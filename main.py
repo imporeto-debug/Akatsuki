@@ -517,11 +517,10 @@ def format_character_names(characters):
 async def ask_deepseek(
     messages,
     max_tokens=MAX_RESPONSE_TOKENS,
-    temperature=0.95
+    temperature=0.95,
+    retries=3
 ):
-    global http_session
-
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
+    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"  # ⚠️ При необходимости обновите адрес
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -539,73 +538,56 @@ async def ask_deepseek(
         "stream": False,
     }
 
-    try:
+    # Принудительная задержка 12 секунд для соблюдения rate limit (5 запросов в минуту)
+    await asyncio.sleep(12)
 
-        if http_session is None or http_session.closed:
+    for attempt in range(retries):
+        try:
+            # Создаём новую сессию для каждого запроса
+            timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
+            connector = aiohttp.TCPConnector(limit=20, ttl_dns_cache=300)
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                async with session.post(url, headers=headers, json=payload) as resp:
+                    text = await resp.text()
+                    print(f"STATUS (attempt {attempt+1}):", resp.status)
+                    print("RAW:", text[:2000])
 
-            timeout = aiohttp.ClientTimeout(
-                total=120,
-                connect=30,
-                sock_read=120
-            )
+                    if resp.status == 200:
+                        data = json.loads(text)
+                        if "choices" not in data:
+                            print("NO CHOICES. Keys:", list(data.keys()))
+                            return None
+                        choice = data["choices"][0]
+                        if "message" not in choice:
+                            print("NO MESSAGE in choice")
+                            return None
+                        content = choice["message"].get("content", "").strip()
+                        if not content:
+                            print("EMPTY CONTENT")
+                            return None
+                        return content
+                    elif resp.status == 429:
+                        print(f"Rate limited (429). Retrying in {2**attempt} sec...")
+                        await asyncio.sleep(2 ** attempt)
+                    else:
+                        print(f"Non-200 status: {resp.status}")
+                        print("Error body:", text[:500])
+                        return None
 
-            connector = aiohttp.TCPConnector(
-                limit=20,
-                ttl_dns_cache=300
-            )
-
-            http_session = aiohttp.ClientSession(
-                timeout=timeout,
-                connector=connector,
-            )
-
-        async with http_session.post(
-            url,
-            headers=headers,
-            json=payload
-        ) as resp:
-
-            text = await resp.text()
-
-            print("STATUS:", resp.status)
-            print("RAW:", text[:4000])
-
-            if resp.status != 200:
+        except asyncio.TimeoutError:
+            print(f"DeepSeek timeout (attempt {attempt+1})")
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+            else:
+                return None
+        except Exception as e:
+            print(f"DeepSeek error: {repr(e)}")
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
+            else:
                 return None
 
-            data = json.loads(text)
-
-            if "choices" not in data:
-                print("NO CHOICES")
-                return None
-
-            choice = data["choices"][0]
-
-            if "message" not in choice:
-                print("NO MESSAGE")
-                return None
-
-            content = (
-                choice["message"]
-                .get("content", "")
-                .strip()
-            )
-
-            if not content:
-                print("EMPTY CONTENT")
-                return None
-
-            return content
-
-    except asyncio.TimeoutError:
-
-        print("DeepSeek timeout")
-        return None
-
-    except Exception as e:
-
-        print(f"DeepSeek error: {repr(e)}")
-        return None
+    return None
 
 # ========================= BANTER GENERATION =========================
 
