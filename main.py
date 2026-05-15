@@ -445,7 +445,7 @@ async def ask_deepseek(
     }
 
     payload = {
-        "model": "deepseek-chat",
+        "model": "deepseek-v4",
         "messages": messages,
         "temperature": temperature,
         "top_p": 0.9,
