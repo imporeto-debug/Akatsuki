@@ -596,8 +596,6 @@ async def on_message(message):
 
     # ========================= MULTI CHARACTER =========================
 
-    # ========================= MULTI CHARACTER =========================
-
     responders = (
         build_multi_character_list(responder)
         if random.randint(1, 100) <= MULTI_REPLY_CHANCE
