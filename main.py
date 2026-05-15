@@ -309,12 +309,21 @@ def detect_user_husbands(uid):
     info = users_memory.get(str(uid))
     if not info or not info.get("wife"):
         return []
-    raw = info.get("info", "").lower()
+    name_field = info.get("name", "").lower()
+    mapping = {
+        "итачи": "itachi",
+        "кисаме": "kisame",
+        "дейдара": "deidara",
+        "сасори": "sasori",
+        "хидан": "hidan",
+        "какузу": "kakuzu",
+        "саске": "sasuke",
+    }
     husbands = []
-    for key, data in AKATSUKI_MEMBERS.items():
-        if any(alias.lower() in raw for alias in data["aliases"]):
+    for russian_name, key in mapping.items():
+        if russian_name in name_field:
             husbands.append(key)
-    return list(dict.fromkeys(husbands))
+    return husbands
 
 # ========================= RANDOM HUSBAND =========================
 
