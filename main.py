@@ -586,12 +586,15 @@ async def on_message(message):
         if any(alias.lower() in message.content.lower() for alias in aliases):
             wife_character = husband
             break
+
     # ========================= MAIN RESPONDER =========================
 
-    if wife_character and not has_name:
+    if wife_character:
         responder, interrupted, original_target = wife_character, False, None
     else:
         responder, interrupted, original_target = choose_responder(message.content)
+
+    # ========================= MULTI CHARACTER =========================
 
     # ========================= MULTI CHARACTER =========================
 
