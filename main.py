@@ -108,7 +108,7 @@ IMPORTANT:
 - Different characters MUST sound different
 """
 
-# ========================= CHARACTER PROMPTS (UPDATED) =========================
+# ========================= CHARACTER PROMPTS =========================
 
 CHARACTER_PROMPTS = {
 
@@ -335,7 +335,7 @@ def load_users():
 users_memory = load_users()
 
 # ========================= BUILD CHARACTER WIVES (FULL INFO) =========================
-character_wives_info = {}  # char_id -> list of dicts with keys: name, info, birthday
+character_wives_info = {}
 
 for uid, data in users_memory.items():
     if data.get("wife"):
@@ -351,7 +351,6 @@ for uid, data in users_memory.items():
                     "birthday": wife_birthday
                 })
 
-# Deduplicate
 for char_id in character_wives_info:
     unique_wives = []
     seen_names = set()
@@ -771,7 +770,16 @@ async def on_message(message):
         extra_context += "Важная информация о семейном положении персонажей:\n" + "\n".join(wives_info_for_responders) + "\n"
         extra_context += "Если пользователь спрашивает про 'твою жену', 'что подаришь жене' и т.п., персонаж должен отвечать именно про свою жену (или жён), а не отрицать её наличие. Он хорошо знает свою жену, её интересы и особенности.\n"
 
-    # ---- Если пользователь сам является женой ----
+    # ---- Явно указываем, кем является автор для каждого персонажа ----
+    for resp_char in responders:
+        char_name = AKATSUKI_MEMBERS[resp_char]['name']
+        if resp_char in user_husbands:
+            extra_context += f"{char_name} знает, что автор сообщения — его жена.\n"
+        else:
+            wives_names = ', '.join([w['name'] for w in character_wives_info.get(resp_char, [])]) if character_wives_info.get(resp_char) else 'никого'
+            extra_context += f"{char_name} знает, что автор сообщения НЕ является его женой. Автор — {message.author.display_name}, а жену {char_name} зовут {wives_names}.\n"
+
+    # ---- Если пользователь сам является женой кого-то (старая логика) ----
     if wife_character:
         extra_context += f"""
 Пользователь является женой:
