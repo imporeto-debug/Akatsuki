@@ -548,7 +548,7 @@ async def ask_deepseek(
 ):
     global http_session
 
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
+    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/v1/chat/completions"
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -556,7 +556,7 @@ async def ask_deepseek(
     }
 
     payload = {
-        "model": "deepseek-v4",
+        "model": "deepseek-v4-pro",
         "messages": messages,
         "temperature": temperature,
         "top_p": 0.9,
