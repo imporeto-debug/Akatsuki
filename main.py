@@ -284,9 +284,15 @@ def now_msk():
 def add_to_history(channel_id, role, content):
     if channel_id not in MEMORY_CHANNELS:
         return
+
     if channel_id not in conversation_history:
         conversation_history[channel_id] = []
-    conversation_history[channel_id].append({"role": role, "content": content})
+
+    conversation_history[channel_id].append({
+        "role": role,
+        "content": content
+    })
+
     if len(conversation_history[channel_id]) > MAX_HISTORY_MESSAGES:
         conversation_history[channel_id] = conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
 
@@ -299,7 +305,7 @@ def detect_character(text: str):
         for alias in data["aliases"]:
 
             if re.search(rf"\b{re.escape(alias.lower())}\b", text):
-    return key
+                return key
 
     return None
 
@@ -307,63 +313,99 @@ def detect_character(text: str):
 
 def detect_user_husbands(uid):
     uid = str(uid)
+
     if uid not in users_memory:
         return []
+
     info = users_memory[uid]
+
     if not info.get("wife"):
         return []
+
     name = info.get("name", "").lower()
+
     husbands = []
+
     if "итачи" in name:
         husbands.append("itachi")
+
     if "кисаме" in name:
         husbands.append("kisame")
+
     if "дейдара" in name:
         husbands.append("deidara")
+
     if "сасори" in name:
         husbands.append("sasori")
+
     if "хидан" in name:
         husbands.append("hidan")
+
     if "какузу" in name:
         husbands.append("kakuzu")
+
     if "саске" in name:
         husbands.append("sasuke")
+
     return husbands
 
 # ========================= RANDOM HUSBAND =========================
 
 def choose_husband(husbands):
-    return random.choice(husbands) if len(husbands) > 1 else (husbands[0] if husbands else None)
+    return random.choice(husbands) if len(husbands) > 1 else (
+        husbands[0] if husbands else None
+    )
 
 # ========================= MULTI CHARACTER LOGIC =========================
 
 def build_multi_character_list(main_character):
     characters = [main_character]
+
     partner = AKATSUKI_MEMBERS[main_character]["partner"]
+
     if partner and random.randint(1, 100) <= PARTNER_JOIN_CHANCE:
         characters.append(partner)
-    if len(characters) < MAX_MULTI_REPLY_CHARACTERS and random.randint(1, 100) <= RANDOM_INTRUSION_CHANCE:
-        available = [c for c in AKATSUKI_MEMBERS if c not in characters]
+
+    if (
+        len(characters) < MAX_MULTI_REPLY_CHARACTERS
+        and random.randint(1, 100) <= RANDOM_INTRUSION_CHANCE
+    ):
+        available = [
+            c for c in AKATSUKI_MEMBERS
+            if c not in characters
+        ]
+
         if available:
             characters.append(random.choice(available))
+
     return characters
 
 # ========================= CHOOSE RESPONDER =========================
 
 def choose_responder(message_text):
     target = detect_character(message_text)
+
     if target:
         partner = AKATSUKI_MEMBERS[target]["partner"]
+
         if partner and random.randint(1, 100) <= 12:
             return (partner, True, target)
+
         return (target, False, None)
-    return (random.choice(list(AKATSUKI_MEMBERS.keys())), False, None)
+
+    return (
+        random.choice(list(AKATSUKI_MEMBERS.keys())),
+        False,
+        None
+    )
 
 # ========================= REACTIONS =========================
 
 async def add_character_reaction(message, character):
     try:
-        await message.add_reaction(random.choice(AKATSUKI_MEMBERS[character]["emoji"]))
+        await message.add_reaction(
+            random.choice(AKATSUKI_MEMBERS[character]["emoji"])
+        )
     except:
         pass
 
@@ -381,19 +423,27 @@ def build_character_prompt(characters):
     )
 
 def format_character_names(characters):
-    return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
+    return ", ".join(
+        AKATSUKI_MEMBERS[c]["name"]
+        for c in characters
+    )
 
 # ========================= DEEPSEEK API =========================
 
-async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95):
+async def ask_deepseek(
+    messages,
+    max_tokens=MAX_RESPONSE_TOKENS,
+    temperature=0.95
+):
     global http_session
 
     url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
-    
+
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
     }
+
     payload = {
         "model": "deepseek-v4-pro",
         "messages": messages,
@@ -408,12 +458,26 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                 timeout=aiohttp.ClientTimeout(total=35),
                 connector=aiohttp.TCPConnector(limit=50),
             )
-        async with http_session.post(url, headers=headers, json=payload) as resp:
+
+        async with http_session.post(
+            url,
+            headers=headers,
+            json=payload
+        ) as resp:
+
             if resp.status != 200:
                 print(await resp.text())
                 return None
+
             data = await resp.json()
-            return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+
+            return (
+                data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+
     except Exception as e:
         print(f"DeepSeek error: {e}")
         return None
@@ -422,17 +486,28 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
 
 async def send_akatsuki_banter():
     channel = bot.get_channel(MAIN_CHANNEL_ID)
+
     if not channel:
         return
 
-    participants = random.sample(list(AKATSUKI_MEMBERS.keys()), random.randint(2, 3))
+    participants = random.sample(
+        list(AKATSUKI_MEMBERS.keys()),
+        random.randint(2, 3)
+    )
+
     topic = random.choice(BANTER_TOPICS)
+
     participant_names = format_character_names(participants)
     character_prompt = build_character_prompt(participants)
 
     prompt = [
-        {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
-        {"role": "user", "content": f"""
+        {
+            "role": "system",
+            "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt
+        },
+        {
+            "role": "user",
+            "content": f"""
 Сделай живой диалог Акацуки.
 
 Участники:
@@ -453,47 +528,70 @@ async def send_akatsuki_banter():
 **Имя**: текст
 
 Минимум 8 сообщений.
-"""},
+"""
+        },
     ]
 
     response = await ask_deepseek(prompt)
+
     if response:
         await channel.send(response)
 
 # ========================= BIRTHDAY SYSTEM =========================
 
 def parse_birthday(date_str: str):
-    # format: "день-месяц", e.g. "15-3" = 15 марта
+
+    # format: "день-месяц"
+
     if not date_str:
         return None
+
     parts = date_str.split("-")
+
     if len(parts) < 2:
         return None
+
     try:
         return (int(parts[0]), int(parts[1]))
+
     except:
         return None
 
 def is_today_birthday(birthday_str: str, now):
     parsed = parse_birthday(birthday_str)
+
     if not parsed:
         return False
+
     day, month = parsed
+
     return now.day == day and now.month == month
 
 async def send_birthday_message(uid, data):
     channel = bot.get_channel(MAIN_CHANNEL_ID)
+
     if not channel:
         return
 
     name = data.get("name", "неизвестно")
-    participants = random.sample(list(AKATSUKI_MEMBERS.keys()), random.randint(2, 3))
+
+    participants = random.sample(
+        list(AKATSUKI_MEMBERS.keys()),
+        random.randint(2, 3)
+    )
+
     participant_names = format_character_names(participants)
+
     character_prompt = build_character_prompt(participants)
 
     prompt = [
-        {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
-        {"role": "user", "content": f"""
+        {
+            "role": "system",
+            "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt
+        },
+        {
+            "role": "user",
+            "content": f"""
 Сгенерируй поздравление.
 
 Адресат:
@@ -514,10 +612,12 @@ async def send_birthday_message(uid, data):
 **Имя**: текст
 
 8-12 сообщений
-"""},
+"""
+        },
     ]
 
     response = await ask_deepseek(prompt)
+
     if response:
         await channel.send(f"🎂 {name}\n{response}")
 
@@ -525,20 +625,29 @@ async def send_birthday_message(uid, data):
 
 @tasks.loop(minutes=15)
 async def random_banter_loop():
+
     await bot.wait_until_ready()
+
     now = now_msk()
+
     if now.hour in [11, 18, 22] and random.random() < 0.18:
         await send_akatsuki_banter()
 
 @tasks.loop(minutes=1)
 async def birthday_check_loop():
+
     await bot.wait_until_ready()
+
     now = now_msk()
+
     if now.hour != 7 or now.minute != 0:
         return
+
     for uid, data in users_memory.items():
+
         if not data.get("wife") or not data.get("birthday"):
             continue
+
         if is_today_birthday(data["birthday"], now):
             await send_birthday_message(uid, data)
 
@@ -546,20 +655,30 @@ async def birthday_check_loop():
 
 @bot.event
 async def on_message(message):
+
     if message.author.bot:
         return
 
-    add_to_history(message.channel.id, "user", message.content)
+    add_to_history(
+        message.channel.id,
+        "user",
+        message.content
+    )
 
     # ========================= DETECTION =========================
 
-    mentioned     = bot.user in message.mentions
+    mentioned = bot.user in message.mentions
+
     replied_to_bot = (
-    message.reference
-    and getattr(message.reference, "resolved", None)
-    and isinstance(message.reference.resolved, discord.Message)
-    and message.reference.resolved.author.id == bot.user.id
+        message.reference
+        and getattr(message.reference, "resolved", None)
+        and isinstance(
+            message.reference.resolved,
+            discord.Message
+        )
+        and message.reference.resolved.author.id == bot.user.id
     )
+
     has_name = detect_character(message.content)
 
     # ========================= SHOULD REPLY =========================
@@ -569,7 +688,9 @@ async def on_message(message):
         return
 
     reply_needed = (
-        mentioned or replied_to_bot or has_name
+        mentioned
+        or replied_to_bot
+        or has_name
         or random.randint(1, 100) <= response_chance
     )
 
@@ -580,41 +701,67 @@ async def on_message(message):
     # ========================= WIFE DETECTION =========================
 
     user_husbands = detect_user_husbands(message.author.id)
+
     wife_character = None
+
     for husband in user_husbands:
+
         aliases = AKATSUKI_MEMBERS[husband]["aliases"]
-        if any(alias.lower() in message.content.lower() for alias in aliases):
+
+        if any(
+            alias.lower() in message.content.lower()
+            for alias in aliases
+        ):
             wife_character = husband
             break
 
     # ========================= MAIN RESPONDER =========================
 
     if wife_character:
-        responder, interrupted, original_target = wife_character, False, None
+
+        responder = wife_character
+        interrupted = False
+        original_target = None
+
     else:
-        responder, interrupted, original_target = choose_responder(message.content)
+
+        responder, interrupted, original_target = (
+            choose_responder(message.content)
+        )
 
     # ========================= MULTI CHARACTER =========================
 
     responders = (
         build_multi_character_list(responder)
+
         if random.randint(1, 100) <= MULTI_REPLY_CHANCE
+
         else [responder]
     )
 
     # принудительно включаем мужа
+
     if wife_character and wife_character not in responders:
         responders.insert(0, wife_character)
 
-    responders = list(dict.fromkeys(responders))[:MAX_MULTI_REPLY_CHARACTERS]
+    responders = list(
+        dict.fromkeys(responders)
+    )[:MAX_MULTI_REPLY_CHARACTERS]
 
     # ========================= BUILD PROMPT =========================
 
     character_prompt = build_character_prompt(responders)
-    system_prompt    = BASE_SYSTEM_PROMPT + "\n" + character_prompt
-    extra_context    = ""
+
+    system_prompt = (
+        BASE_SYSTEM_PROMPT
+        + "\n"
+        + character_prompt
+    )
+
+    extra_context = ""
 
     if wife_character:
+
         extra_context += f"""
 Пользователь является женой:
 {AKATSUKI_MEMBERS[wife_character]["name"]}
@@ -639,6 +786,7 @@ async def on_message(message):
 """
 
     if len(user_husbands) >= 2:
+
         extra_context += f"""
 ВАЖНО:
 У пользователя несколько мужей:
@@ -649,9 +797,14 @@ async def on_message(message):
 """
 
     if interrupted and original_target:
+
         interrupt_line = random.choice(
-            PARTNER_INTERRUPTS.get((responder, original_target), ["Он занят."])
+            PARTNER_INTERRUPTS.get(
+                (responder, original_target),
+                ["Он занят."]
+            )
         )
+
         extra_context += f"""
 {AKATSUKI_MEMBERS[responder]["name"]}
 отвечает вместо
@@ -662,6 +815,7 @@ async def on_message(message):
 """
 
     if len(responders) >= 2:
+
         extra_context += """
 ВАЖНО:
 - персонажи могут перебивать друг друга
@@ -673,7 +827,10 @@ async def on_message(message):
 - некоторые могут внезапно влезать
 """
 
-    history = conversation_history.get(message.channel.id, [])[-8:]
+    history = conversation_history.get(
+        message.channel.id,
+        []
+    )[-8:]
 
     user_context = f"""
 Автор:
@@ -699,51 +856,103 @@ async def on_message(message):
 """
 
     prompt = (
-        [{"role": "system", "content": system_prompt}]
+        [
+            {
+                "role": "system",
+                "content": system_prompt
+            }
+        ]
         + history
-        + [{"role": "user", "content": user_context}]
+        + [
+            {
+                "role": "user",
+                "content": user_context
+            }
+        ]
     )
+
     # ========================= SEND =========================
-    await add_multi_reactions(message, responders)
+
+    await add_multi_reactions(
+        message,
+        responders
+    )
+
     async with message.channel.typing():
+
         reply = await ask_deepseek(prompt)
+
     print("REPLY:", reply)
+
     if not reply:
+
         await message.reply(
             f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: Тц. Связь сдохла.",
             mention_author=False
         )
+
         return
+
     clean_reply = reply.strip()
+
     if not clean_reply.startswith("**"):
-        clean_reply = f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: {clean_reply}"
+
+        clean_reply = (
+            f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: "
+            f"{clean_reply}"
+        )
+
     try:
-        await message.reply(clean_reply, mention_author=False)
+
+        await message.reply(
+            clean_reply,
+            mention_author=False
+        )
+
     except:
+
         await message.channel.send(clean_reply)
-    add_to_history(message.channel.id, "assistant", clean_reply)
+
+    add_to_history(
+        message.channel.id,
+        "assistant",
+        clean_reply
+    )
+
     await bot.process_commands(message)
+
 # ========================= READY EVENT =========================
 
 @bot.event
 async def on_ready():
+
     print(f"✅ Акацуки бот запущен: {bot.user}")
-    print(f"🕒 Moscow time: {now_msk().strftime('%H:%M')}")
+
+    print(
+        f"🕒 Moscow time: "
+        f"{now_msk().strftime('%H:%M')}"
+    )
+
     if not random_banter_loop.is_running():
         random_banter_loop.start()
+
     if not birthday_check_loop.is_running():
         birthday_check_loop.start()
 
 # ========================= CLEANUP + MAIN =========================
 
 async def close_http_session():
+
     global http_session
+
     if http_session and not http_session.closed:
         await http_session.close()
 
 async def main():
+
     try:
         await bot.start(DISCORD_TOKEN)
+
     finally:
         await close_http_session()
 
