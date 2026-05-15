@@ -311,6 +311,7 @@ bot = commands.Bot(
 )
 
 conversation_history = {}
+http_session = None
 
 # ========================= TIME =========================
 
@@ -537,81 +538,6 @@ def format_character_names(characters):
         AKATSUKI_MEMBERS[c]["name"]
         for c in characters
     )
-
-# ========================= DEEPSEEK API =========================
-
-async def ask_deepseek(
-    messages,
-    max_tokens=MAX_RESPONSE_TOKENS,
-    temperature=0.95
-):
-
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
-
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-    }
-
-    payload = {
-        "model": "deepseek-v4-pro",
-        "messages": messages,
-        "temperature": temperature,
-        "top_p": 0.9,
-        "max_tokens": max_tokens,
-    }
-
-    timeout = aiohttp.ClientTimeout(
-        total=90
-    )
-
-    try:
-
-        async with aiohttp.ClientSession(
-            timeout=timeout
-        ) as session:
-
-            async with session.post(
-                url,
-                headers=headers,
-                json=payload
-            ) as resp:
-
-                print(
-                    "STATUS:",
-                    resp.status
-                )
-
-                text = await resp.text()
-
-                print(
-                    "RAW:",
-                    text[:1000]
-                )
-
-                if resp.status != 200:
-                    return None
-
-                data = json.loads(text)
-
-                return (
-                    data.get(
-                        "choices",
-                        [{}]
-                    )[0]
-                    .get("message", {})
-                    .get("content", "")
-                    .strip()
-                )
-
-    except Exception as e:
-
-        print(
-            "DEEPSEEK ERROR:",
-            repr(e)
-        )
-
-        return None
 
 # ========================= BANTER GENERATION =========================
 
