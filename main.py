@@ -704,25 +704,27 @@ async def on_message(message):
         + [{"role": "user", "content": user_context}]
     )
 
-    # ========================= SEND =========================
+   # ========================= SEND =========================
 
-    await add_multi_reactions(message, responders)
-
-    async with message.channel.typing():
-        reply = await ask_deepseek(prompt)
-
-    if reply:
-        clean_reply = reply.strip()
-        if not clean_reply.startswith("**"):
-            clean_reply = f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: {clean_reply}"
-        try:
-            await message.reply(clean_reply, mention_author=False)
-        except:
-            await message.channel.send(clean_reply)
-        add_to_history(message.channel.id, "assistant", clean_reply)
-
-    await bot.process_commands(message)
-
+await add_multi_reactions(message, responders)
+async with message.channel.typing():
+    reply = await ask_deepseek(prompt)
+print("REPLY:", reply)
+if not reply:
+    await message.reply(
+        f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: Тц. Связь сдохла.",
+        mention_author=False
+    )
+    return
+clean_reply = reply.strip()
+if not clean_reply.startswith("**"):
+    clean_reply = f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: {clean_reply}"
+try:
+    await message.reply(clean_reply, mention_author=False)
+except:
+    await message.channel.send(clean_reply)
+add_to_history(message.channel.id, "assistant", clean_reply)
+await bot.process_commands(message)
 # ========================= READY EVENT =========================
 
 @bot.event
