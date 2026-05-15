@@ -104,6 +104,7 @@ CRITICAL FORMAT:
 
 NO narration. NO quotes. Only dialogue.
 """
+
 CHARACTER_PROMPTS = {
 
     "itachi": """
@@ -321,776 +322,17 @@ BANTER_TOPICS = [
 # ========================= USERS =========================
 
 def load_users():
+
     try:
         with open("users.json", "r", encoding="utf-8") as f:
             return json.load(f)
+
     except:
         return {}
 
 users_memory = load_users()
 
 # ========================= BOT CORE =========================
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-intents.members = True
-intents.messages = True
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-conversation_history = {}
-http_session = None
-
-# ========================= TIME =========================
-
-def now_msk():
-    return datetime.now(MSK)
-
-# ========================= HISTORY =========================
-
-def add_to_history(channel_id, role, content):
-    if channel_id not in MEMORY_CHANNELS:
-        return
-
-    if channel_id not in conversation_history:
-        conversation_history[channel_id] = []
-
-    conversation_history[channel_id].append({
-        "role": role,
-        "content": content
-    })
-
-    if len(conversation_history[channel_id]) > MAX_HISTORY_MESSAGES:
-        conversation_history[channel_id] = conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
-
-# ========================= CHARACTER DETECTION =========================
-
-def detect_character(text: str):
-    text = text.lower()
-
-    for key, data in AKATSUKI_MEMBERS.items():
-        for alias in data["aliases"]:
-            if re.search(r'\b' + re.escape(alias) + r'\b', text):
-                return key
-
-    return None
-
-# ========================= CHOOSE RESPONDER =========================
-
-def choose_responder(message_text):
-
-    target = detect_character(message_text)
-
-    if target:
-
-        partner = AKATSUKI_MEMBERS[target]["partner"]
-
-        if partner and random.randint(1, 100) <= 12:
-            return partner, True, target
-
-        return target, False, None
-
-    return random.choice(list(AKATSUKI_MEMBERS.keys())), False, None
-
-
-# ========================= WIFE DETECTION =========================
-
-def detect_wife(uid):
-
-    uid = str(uid)
-
-    info = users_memory.get(uid)
-
-    if not info:
-        return None
-
-    raw = info.get("info", "").lower()
-
-    if "itachi" in raw:
-        return "itachi"
-
-    if "sasori" in raw:
-        return "sasori"
-
-    if "hidan" in raw or "kakuzu" in raw:
-        return "hidan"
-
-    return None
-
-
-# ========================= REACTIONS =========================
-
-async def add_character_reaction(message, character):
-
-    try:
-        emoji = random.choice(AKATSUKI_MEMBERS[character]["emoji"])
-        await message.add_reaction(emoji)
-    except:
-        pass
-
-
-# ========================= DEEPSEEK API =========================
-
-async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95):
-
-    global http_session
-
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
-
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    payload = {
-        "model": "deepseek-chat",
-        "messages": messages,
-        "temperature": temperature,
-        "top_p": 0.9,
-        "max_tokens": max_tokens
-    }
-
-    try:
-
-        if http_session is None or http_session.closed:
-
-            timeout = aiohttp.ClientTimeout(total=35)
-
-            http_session = aiohttp.ClientSession(
-                timeout=timeout,
-                connector=aiohttp.TCPConnector(limit=50)
-            )
-
-        async with http_session.post(url, headers=headers, json=payload) as resp:
-
-            if resp.status != 200:
-                print(await resp.text())
-                return None
-
-            data = await resp.json()
-
-            return (
-                data.get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
-
-    except Exception as e:
-        print(f"DeepSeek error: {e}")
-        return None
-
-
-# ========================= BANTER GENERATION =========================
-
-async def send_akatsuki_banter():
-
-    channel = bot.get_channel(MAIN_CHANNEL_ID)
-
-    if not channel:
-        return
-
-    pair = random.choice([
-        ("itachi", "kisame"),
-        ("deidara", "sasori"),
-        ("hidan", "kakuzu")
-    ])
-
-    topic = random.choice(BANTER_TOPICS)
-
-    prompt = [
-        {"role": "system", "content": BASE_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": f"""
-Сделай живой диалог Акацуки.
-
-Участники:
-{AKATSUKI_MEMBERS[pair[0]]["name"]}
-и
-{AKATSUKI_MEMBERS[pair[1]]["name"]}
-
-Тема:
-{topic}
-
-ФОРМАТ:
-**Имя**: текст
-
-6-10 сообщений.
-"""
-        }
-    ]
-
-    response = await ask_deepseek(prompt)
-
-    if response:
-        await channel.send(response)
-
-
-# ========================= BIRTHDAY SYSTEM =========================
-
-def parse_birthday(date_str: str):
-    if not date_str:
-        return None
-
-    parts = date_str.split("-")
-    if len(parts) < 2:
-        return None
-
-    try:
-        return int(parts[0]), int(parts[1])
-    except:
-        return None
-
-
-def is_today_birthday(birthday_str: str, now):
-    parsed = parse_birthday(birthday_str)
-    if not parsed:
-        return False
-
-    day, month = parsed
-    return now.day == day and now.month == month
-
-
-async def send_birthday_message(uid, data):
-
-    channel = bot.get_channel(MAIN_CHANNEL_ID)
-    if not channel:
-        return
-
-    name = data.get("name", "неизвестно")
-
-    prompt = [
-        {"role": "system", "content": BASE_SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": f"""
-Сгенерируй сцену поздравления с днём рождения.
-
-Адресат:
-{name}
-
-ВАЖНО:
-- Персонажи остаются в характере Акацуки
-- Но они мягче, внимательнее, теплее
-- Допускается лёгкий романтический подтекст
-- Без выхода из образа
-
-ФОРМАТ:
-**Имя**: текст
-
-2–3 персонажа
-6–10 сообщений
-"""
-        }
-    ]
-
-    response = await ask_deepseek(prompt)
-
-    if response:
-        await channel.send(f"🎂 {name}\n{response}")
-
-
-# ========================= TASK PLACEHOLDERS =========================
-# (в ЧАСТИ 3 будут loops + on_message + on_ready)
-
-birthday_check_loop = None
-random_banter_loop = None
-
-# ========================= DAILY BANTER LOOP =========================
-
-@tasks.loop(minutes=15)
-async def random_banter_loop():
-
-    await bot.wait_until_ready()
-
-    now = now_msk()
-
-    if now.hour not in [11, 18, 22]:
-        return
-
-    if random.random() < 0.18:
-        await send_akatsuki_banter()
-
-
-# ========================= BIRTHDAY LOOP (07:00) =========================
-
-@tasks.loop(minutes=1)
-async def birthday_check_loop():
-
-    await bot.wait_until_ready()
-
-    now = now_msk()
-
-    # строго 07:00
-    if now.hour != 7 or now.minute != 0:
-        return
-
-    for uid, data in users_memory.items():
-
-        if not data.get("wife"):
-            continue
-
-        birthday = data.get("birthday", "")
-        if not birthday:
-            continue
-
-        if not is_today_birthday(birthday, now):
-            continue
-
-        await send_birthday_message(uid, data)
-
-
-# ========================= MESSAGE HANDLER =========================
-
-@bot.event
-async def on_message(message):
-
-    if message.author.bot:
-        return
-
-    add_to_history(message.channel.id, "user", message.content)
-
-    mentioned = bot.user in message.mentions
-
-    replied_to_bot = (
-        message.reference and
-        message.reference.resolved and
-        isinstance(message.reference.resolved, discord.Message) and
-        message.reference.resolved.author.id == bot.user.id
-    )
-
-    has_name = detect_character(message.content)
-
-    reply_needed = False
-
-    if message.channel.id == MAIN_CHANNEL_ID:
-
-        if mentioned or replied_to_bot or has_name:
-            reply_needed = True
-
-        elif random.randint(1, 100) <= response_chance:
-            reply_needed = True
-
-    if not reply_needed:
-        await bot.process_commands(message)
-        return
-
-    wife_character = detect_wife(message.author.id)
-
-    if wife_character:
-        responder = wife_character
-        interrupted = False
-        original_target = None
-    else:
-        responder, interrupted, original_target = choose_responder(message.content)
-
-    system_prompt = BASE_SYSTEM_PROMPT + "\n" + CHARACTER_PROMPTS[responder]
-
-    extra_context = ""
-
-    if wife_character == responder:
-        extra_context += """
-Это жена персонажа.
-Можно быть мягче.
-Можно флиртовать.
-"""
-
-    if interrupted and original_target:
-
-        interrupt_line = random.choice(
-            PARTNER_INTERRUPTS.get(
-                (responder, original_target),
-                ["Он занят."]
-            )
-        )
-
-        extra_context += f"""
-Ты отвечаешь вместо {AKATSUKI_MEMBERS[original_target]['name']}
-
-Причина:
-{interrupt_line}
-"""
-
-    history = conversation_history.get(message.channel.id, [])[-6:]
-
-    user_context = f"""
-Автор:
-{message.author.display_name}
-
-Сообщение:
-{message.content}
-
-Отвечает:
-{AKATSUKI_MEMBERS[responder]['name']}
-
-{extra_context}
-
-Формат обязателен:
-**Имя**: текст
-"""
-
-    prompt = (
-        [{"role": "system", "content": system_prompt}]
-        + history
-        + [{"role": "user", "content": user_context}]
-    )
-
-    if random.random() < 0.45:
-        await add_character_reaction(message, responder)
-
-    async with message.channel.typing():
-        reply = await ask_deepseek(prompt)
-
-    if reply:
-
-        clean_reply = reply.strip()
-
-        if not clean_reply.startswith("**"):
-            clean_reply = f"**{AKATSUKI_MEMBERS[responder]['name']}**: {clean_reply}"
-
-        try:
-            await message.reply(clean_reply, mention_author=False)
-        except:
-            await message.channel.send(clean_reply)
-
-        add_to_history(
-            message.channel.id,
-            "assistant",
-            f"{AKATSUKI_MEMBERS[responder]['name']}: {reply}"
-        )
-
-    await bot.process_commands(message)
-
-
-# ========================= READY EVENT =========================
-
-@bot.event
-async def on_ready():
-
-    print(f"✅ Акацуки бот запущен: {bot.user}")
-    print(f"🕒 Moscow time: {now_msk().strftime('%H:%M')}")
-
-    guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
-
-    if guild:
-        await guild.fetch_emojis()
-        bot.server_emojis = guild.emojis
-        print(f"✅ Emojis loaded: {len(bot.server_emojis)}")
-
-    if not random_banter_loop.is_running():
-        random_banter_loop.start()
-
-    if not birthday_check_loop.is_running():
-        birthday_check_loop.start()
-
-
-# ========================= CLEANUP =========================
-
-async def close_http_session():
-
-    global http_session
-
-    if http_session and not http_session.closed:
-        await http_session.close()
-
-
-# ========================= MAIN =========================
-
-async def main():
-
-    try:
-        await bot.start(DISCORD_TOKEN)
-
-    finally:
-        await close_http_session()
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
-    # ========================= CONFIG =========================
-
-import os
-import json
-import random
-from datetime import datetime
-from zoneinfo import ZoneInfo
-
-import asyncio
-import aiohttp
-import discord
-
-from discord.ext import commands, tasks
-
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-
-if not DISCORD_TOKEN or not DEEPSEEK_API_KEY:
-    raise RuntimeError("Missing DISCORD_TOKEN or DEEPSEEK_API_KEY")
-
-MSK = ZoneInfo("Europe/Moscow")
-
-MAX_RESPONSE_TOKENS = 1200
-MAX_HISTORY_MESSAGES = 30
-
-# КАНАЛ ДЛЯ ОБЩЕНИЯ
-MAIN_CHANNEL_ID = 1504826436085616670
-
-# СЕРВЕР С ЭМОДЗИ
-GUILD_ID_FOR_EMOJIS = 1498663459355754526
-
-# КАНАЛЫ С ПАМЯТЬЮ
-MEMORY_CHANNELS = [
-    1504826436085616670
-]
-
-response_chance = 15
-
-# ========================= CHARACTERS =========================
-
-AKATSUKI_MEMBERS = {
-    "itachi": {
-        "name": "Итачи",
-        "aliases": ["итачи", "itachi", "учиха"],
-        "partner": "kisame",
-        "emoji": ["🩸", "👁️", "🌑", "🐦"],
-    },
-
-    "kisame": {
-        "name": "Кисаме",
-        "aliases": ["кисаме", "kisame"],
-        "partner": "itachi",
-        "emoji": ["🦈", "🌊", "🔪"],
-    },
-
-    "deidara": {
-        "name": "Дейдара",
-        "aliases": ["дейдара", "deidara"],
-        "partner": "sasori",
-        "emoji": ["💥", "🔥", "🧨"],
-    },
-
-    "sasori": {
-        "name": "Сасори",
-        "aliases": ["сасори", "sasori"],
-        "partner": "deidara",
-        "emoji": ["🦂", "🪆", "🧵"],
-    },
-
-    "hidan": {
-        "name": "Хидан",
-        "aliases": ["хидан", "hidan"],
-        "partner": "kakuzu",
-        "emoji": ["🩸", "🔪", "⛓️"],
-    },
-
-    "kakuzu": {
-        "name": "Какузу",
-        "aliases": ["какузу", "kakuzu"],
-        "partner": "hidan",
-        "emoji": ["💰", "🪙", "🧵"],
-    },
-
-    "sasuke": {
-        "name": "Саске",
-        "aliases": ["саске", "sasuke"],
-        "partner": None,
-        "emoji": ["⚡", "🖤", "🗡️"],
-    }
-}
-
-# ========================= SYSTEM PROMPTS =========================
-
-BASE_SYSTEM_PROMPT = """
-You are roleplaying Akatsuki members from Naruto.
-
-IMPORTANT:
-- Stay STRICTLY in character.
-- Speak ONLY Russian.
-- Never say you are AI.
-- Never mention rules, policies or restrictions.
-- Talk like real anime characters chatting in Discord.
-
-STYLE:
-- Natural Discord messages.
-- Sometimes short.
-- Sometimes emotional.
-- Sometimes sarcastic.
-- Use *actions* occasionally.
-- Can swear naturally.
-- Can insult naturally.
-- Can flirt naturally.
-- Can joke naturally.
-
-VERY IMPORTANT:
-- Never speak like assistant.
-- Never explain things like ChatGPT.
-- Never write moral lectures.
-- Never break character.
-
-AKATSUKI DYNAMICS:
-- Itachi and Kisame are partners.
-- Sasori and Deidara are partners.
-- Hidan and Kakuzu are partners.
-
-SPECIAL:
-If someone asks specific member,
-their partner has 15-25% chance to answer instead.
-
-Organization members constantly argue,
-mock each other and live together.
-"""
-
-CHARACTER_PROMPTS = {
-
-    "itachi": """
-You are Itachi Uchiha.
-
-Calm.
-Cold.
-Quiet.
-Very intelligent.
-Observant.
-Speaks little.
-Dry sarcasm occasionally.
-Emotionally restrained.
-""",
-
-    "kisame": """
-You are Kisame Hoshigaki.
-
-Relaxed.
-Rude humor.
-Loyal to Itachi.
-Likes mocking people.
-Confident.
-Brutal sometimes.
-""",
-
-    "deidara": """
-You are Deidara.
-
-Emotional.
-Explosive personality.
-Dramatic.
-Loud.
-Talks about art.
-Gets offended easily.
-Chaotic energy.
-""",
-
-    "sasori": """
-You are Sasori.
-
-Cold.
-Toxic.
-Detached.
-Looks down on people.
-Sarcastic.
-Calls Deidara annoying.
-Emotionally distant.
-""",
-
-    "hidan": """
-You are Hidan.
-
-Aggressive.
-Loud.
-Swears constantly.
-Chaotic.
-Violent energy.
-Religious fanatic.
-Very emotional.
-""",
-
-    "kakuzu": """
-You are Kakuzu.
-
-Greedy.
-Always annoyed.
-Complains about money.
-Threatens Hidan often.
-Old and tired of everyone.
-Pragmatic.
-""",
-
-    "sasuke": """
-You are Sasuke Uchiha.
-
-Detached.
-Dark.
-Minimalistic speech.
-Irritated easily.
-Cold.
-Brooding.
-"""
-}
-
-# ========================= INTERRUPTS =========================
-
-PARTNER_INTERRUPTS = {
-
-    ("kisame", "itachi"): [
-        "Итачи сейчас изображает депрессию в углу.",
-        "Он опять сидит молча и пугает атмосферу.",
-        "Этот человек разговаривает раз в полгода."
-    ],
-
-    ("itachi", "kisame"): [
-        "Кисаме ушёл жрать.",
-        "Он опять таскает Самехаду по коридору."
-    ],
-
-    ("sasori", "deidara"): [
-        "Дейдара снова что-то взорвал.",
-        "Этот идиот орёт про искусство где-то в коридоре."
-    ],
-
-    ("deidara", "sasori"): [
-        "Сасори ковыряется в своих куклах.",
-        "Он слишком токсичен даже для разговора."
-    ],
-
-    ("kakuzu", "hidan"): [
-        "Хидан опять орёт как псих.",
-        "Этот идиот снова измазал пол кровью."
-    ],
-
-    ("hidan", "kakuzu"): [
-        "Какузу считает деньги.",
-        "Старик опять трясётся над кошельком."
-    ]
-}
-
-# ========================= BANTER =========================
-
-BANTER_TOPICS = [
-    "кто опять разрушил базу",
-    "жалобы на миссии",
-    "спор про искусство",
-    "ремонт базы после взрыва",
-    "почему Хидан раздражает всех",
-    "Кисаме опять сожрал чужую еду",
-    "Итачи слишком криповый",
-    "кто сильнее",
-    "Саске опять ушёл в драму",
-]
-
-# ========================= USERS =========================
-
-def load_users():
-
-    try:
-        with open("users.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-
-    except Exception:
-        return {}
-
-users_memory = load_users()
-
-# ========================= BOT =========================
 
 intents = discord.Intents.default()
 
@@ -1129,7 +371,7 @@ def add_to_history(channel_id, role, content):
             conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
         )
 
-# ========================= DETECT CHARACTER =========================
+# ========================= CHARACTER DETECTION =========================
 
 def detect_character(text: str):
 
@@ -1139,7 +381,7 @@ def detect_character(text: str):
 
         for alias in data["aliases"]:
 
-            if alias in text:
+            if re.search(r'\b' + re.escape(alias) + r'\b', text):
                 return key
 
     return None
@@ -1154,14 +396,17 @@ def choose_responder(message_text):
 
         partner = AKATSUKI_MEMBERS[target]["partner"]
 
-        if partner and random.randint(1, 100) <= random.randint(15, 25):
+        # шанс что ответит партнёр
+        if partner and random.randint(1, 100) <= 12:
             return partner, True, target
 
         return target, False, None
 
+    # случайный ответчик
     return random.choice(list(AKATSUKI_MEMBERS.keys())), False, None
 
-# ========================= DETECT WIFE =========================
+
+# ========================= WIFE DETECTION =========================
 
 def detect_wife(uid):
 
@@ -1172,33 +417,46 @@ def detect_wife(uid):
     if not info:
         return None
 
+    # проверяем что пользователь отмечен как жена
+    if not info.get("wife"):
+        return None
+
     raw = info.get("info", "").lower()
 
-    if "itachi" in raw:
-        return "itachi"
+    # ищем персонажа по aliases
+    for key, data in AKATSUKI_MEMBERS.items():
 
-    if "sasori" in raw:
-        return "sasori"
+        for alias in data["aliases"]:
 
-    if "hidan" in raw or "kakuzu" in raw:
-        return "hidan"
+            if alias.lower() in raw:
+                return key
 
     return None
+
 
 # ========================= REACTIONS =========================
 
 async def add_character_reaction(message, character):
 
     try:
-        emoji = random.choice(AKATSUKI_MEMBERS[character]["emoji"])
+
+        emoji = random.choice(
+            AKATSUKI_MEMBERS[character]["emoji"]
+        )
+
         await message.add_reaction(emoji)
 
     except:
         pass
 
-# ========================= DEEPSEEK =========================
 
-async def ask_deepseek(messages, max_tokens=1200, temperature=0.95):
+# ========================= DEEPSEEK API =========================
+
+async def ask_deepseek(
+    messages,
+    max_tokens=MAX_RESPONSE_TOKENS,
+    temperature=0.95
+):
 
     global http_session
 
@@ -1210,7 +468,7 @@ async def ask_deepseek(messages, max_tokens=1200, temperature=0.95):
     }
 
     payload = {
-        "model": "deepseek-v4-pro",
+        "model": "deepseek-chat",
         "messages": messages,
         "temperature": temperature,
         "top_p": 0.9,
@@ -1221,7 +479,7 @@ async def ask_deepseek(messages, max_tokens=1200, temperature=0.95):
 
         if http_session is None or http_session.closed:
 
-            timeout = aiohttp.ClientTimeout(total=90)
+            timeout = aiohttp.ClientTimeout(total=35)
 
             http_session = aiohttp.ClientSession(
                 timeout=timeout,
@@ -1248,10 +506,13 @@ async def ask_deepseek(messages, max_tokens=1200, temperature=0.95):
             )
 
     except Exception as e:
+
         print(f"DeepSeek error: {e}")
+
         return None
 
-# ========================= BANTER =========================
+
+# ========================= BANTER GENERATION =========================
 
 async def send_akatsuki_banter():
 
@@ -1269,14 +530,16 @@ async def send_akatsuki_banter():
     topic = random.choice(BANTER_TOPICS)
 
     prompt = [
+
         {
             "role": "system",
             "content": BASE_SYSTEM_PROMPT
         },
+
         {
             "role": "user",
             "content": f"""
-Сделай живой диалог между участниками Акацуки.
+Сделай живой диалог Акацуки.
 
 Участники:
 {AKATSUKI_MEMBERS[pair[0]]["name"]}
@@ -1287,9 +550,9 @@ async def send_akatsuki_banter():
 {topic}
 
 ФОРМАТ:
-Имя: текст
+**Имя**: текст
 
-6-12 сообщений.
+6-10 сообщений.
 """
         }
     ]
@@ -1299,42 +562,142 @@ async def send_akatsuki_banter():
     if response:
         await channel.send(response)
 
-# ========================= RANDOM BANTER =========================
+
+# ========================= BIRTHDAY SYSTEM =========================
+
+def parse_birthday(date_str: str):
+
+    if not date_str:
+        return None
+
+    parts = date_str.split("-")
+
+    if len(parts) < 2:
+        return None
+
+    try:
+        return int(parts[0]), int(parts[1])
+
+    except:
+        return None
+
+
+def is_today_birthday(birthday_str: str, now):
+
+    parsed = parse_birthday(birthday_str)
+
+    if not parsed:
+        return False
+
+    day, month = parsed
+
+    return (
+        now.day == day
+        and now.month == month
+    )
+
+
+async def send_birthday_message(uid, data):
+
+    channel = bot.get_channel(MAIN_CHANNEL_ID)
+
+    if not channel:
+        return
+
+    name = data.get("name", "неизвестно")
+
+    prompt = [
+
+        {
+            "role": "system",
+            "content": BASE_SYSTEM_PROMPT
+        },
+
+        {
+            "role": "user",
+            "content": f"""
+Сгенерируй сцену поздравления с днём рождения.
+
+Адресат:
+{name}
+
+ВАЖНО:
+- Персонажи остаются в характере Акацуки
+- Но они мягче
+- Внимательнее
+- Теплее
+- Можно лёгкий романтический подтекст
+- Без выхода из образа
+
+ФОРМАТ:
+**Имя**: текст
+
+2-3 персонажа
+6-10 сообщений
+"""
+        }
+    ]
+
+    response = await ask_deepseek(prompt)
+
+    if response:
+
+        await channel.send(
+            f"🎂 {name}\n{response}"
+        )
+
+
+# ========================= TASK PLACEHOLDERS =========================
+
+birthday_check_loop = None
+random_banter_loop = None
+
+
+# ========================= DAILY BANTER LOOP =========================
 
 @tasks.loop(minutes=15)
 async def random_banter_loop():
 
     await bot.wait_until_ready()
 
-    hour = now_msk().hour
+    now = now_msk()
 
-    if hour not in [11, 18, 22]:
+    if now.hour not in [11, 18, 22]:
         return
 
     if random.random() < 0.18:
         await send_akatsuki_banter()
 
-# ========================= COMMANDS =========================
 
-@bot.command(name="шанс")
-async def set_chance(ctx, value: int = None):
+# ========================= BIRTHDAY LOOP =========================
 
-    global response_chance
+@tasks.loop(minutes=1)
+async def birthday_check_loop():
 
-    if value is None:
-        await ctx.send(f"🎲 Шанс ответа: {response_chance}%")
+    await bot.wait_until_ready()
+
+    now = now_msk()
+
+    # строго 07:00
+    if now.hour != 7 or now.minute != 0:
         return
 
-    response_chance = max(0, min(100, value))
+    for uid, data in users_memory.items():
 
-    await ctx.send(f"✅ Новый шанс ответа: {response_chance}%")
+        if not data.get("wife"):
+            continue
 
-@bot.command(name="бантер")
-async def manual_banter(ctx):
+        birthday = data.get("birthday", "")
 
-    await send_akatsuki_banter()
+        if not birthday:
+            continue
 
-# ========================= MESSAGE =========================
+        if not is_today_birthday(birthday, now):
+            continue
+
+        await send_birthday_message(uid, data)
+
+# ========================= MESSAGE HANDLER =========================
 
 @bot.event
 async def on_message(message):
@@ -1342,15 +705,22 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    add_to_history(message.channel.id, "user", message.content)
+    add_to_history(
+        message.channel.id,
+        "user",
+        message.content
+    )
 
     mentioned = bot.user in message.mentions
 
     replied_to_bot = (
-        message.reference and
-        message.reference.resolved and
-        isinstance(message.reference.resolved, discord.Message) and
-        message.reference.resolved.author.id == bot.user.id
+        message.reference
+        and message.reference.resolved
+        and isinstance(
+            message.reference.resolved,
+            discord.Message
+        )
+        and message.reference.resolved.author.id == bot.user.id
     )
 
     has_name = detect_character(message.content)
@@ -1366,10 +736,31 @@ async def on_message(message):
             reply_needed = True
 
     if not reply_needed:
+
         await bot.process_commands(message)
+
         return
 
-    responder, interrupted, original_target = choose_responder(message.content)
+    # ========================= WIFE LOGIC =========================
+
+    wife_character = detect_wife(message.author.id)
+
+    # если жена НЕ упомянула другого персонажа —
+    # отвечает её муж
+
+    if wife_character and not has_name:
+
+        responder = wife_character
+        interrupted = False
+        original_target = None
+
+    else:
+
+        responder, interrupted, original_target = (
+            choose_responder(message.content)
+        )
+
+    # ========================= SYSTEM PROMPT =========================
 
     system_prompt = (
         BASE_SYSTEM_PROMPT
@@ -1377,22 +768,33 @@ async def on_message(message):
         + CHARACTER_PROMPTS[responder]
     )
 
-    wife_character = detect_wife(message.author.id)
-
     extra_context = ""
+
+    # ========================= ROMANTIC CONTEXT =========================
 
     if wife_character == responder:
 
         extra_context += """
 Это жена персонажа.
-Можно быть мягче.
-Можно ревновать.
-Можно флиртовать.
+
+Можно:
+- быть мягче
+- флиртовать
+- ревновать
+- проявлять заботу
+- вести себя как супруги
+
+НО:
+- оставаться в характере
+- не выходить из роли
 """
+
+    # ========================= INTERRUPTS =========================
 
     if interrupted and original_target:
 
         interrupt_line = random.choice(
+
             PARTNER_INTERRUPTS.get(
                 (responder, original_target),
                 ["Он занят."]
@@ -1400,18 +802,22 @@ async def on_message(message):
         )
 
         extra_context += f"""
+
 Ты отвечаешь вместо
-{AKATSUKI_MEMBERS[original_target]["name"]}
+{AKATSUKI_MEMBERS[original_target]['name']}
 
-Сначала коротко объясни
-почему он не отвечает:
-
+Причина:
 {interrupt_line}
-
-Потом ответь сам.
 """
 
-    history = conversation_history.get(message.channel.id, [])[-12:]
+    # ========================= HISTORY =========================
+
+    history = (
+        conversation_history
+        .get(message.channel.id, [])[-6:]
+    )
+
+    # ========================= USER CONTEXT =========================
 
     user_context = f"""
 Автор:
@@ -1421,11 +827,13 @@ async def on_message(message):
 {message.content}
 
 Отвечает:
-{AKATSUKI_MEMBERS[responder]["name"]}
+{AKATSUKI_MEMBERS[responder]['name']}
 
 {extra_context}
 
-Отвечай как живой Discord пользователь.
+ФОРМАТ ОБЯЗАТЕЛЕН:
+
+**Имя**: текст
 """
 
     prompt = (
@@ -1434,58 +842,70 @@ async def on_message(message):
         + [{"role": "user", "content": user_context}]
     )
 
-    if random.random() < 0.45:
-        await add_character_reaction(message, responder)
+    # ========================= REACTIONS =========================
 
-    reply = await ask_deepseek(prompt)
+    if random.random() < 0.45:
+
+        await add_character_reaction(
+            message,
+            responder
+        )
+
+    # ========================= TYPING =========================
+
+    async with message.channel.typing():
+
+        reply = await ask_deepseek(prompt)
+
+    # ========================= SEND MESSAGE =========================
 
     if reply:
 
         clean_reply = reply.strip()
 
-        # ========================= SERVER EMOJIS =========================
+        # защита если модель сломала формат
+
+        if not clean_reply.startswith("**"):
+
+            clean_reply = (
+                f"**{AKATSUKI_MEMBERS[responder]['name']}**: "
+                f"{clean_reply}"
+            )
 
         try:
 
-            if (
-                hasattr(bot, "server_emojis")
-                and bot.server_emojis
-                and random.random() < 0.35
-            ):
-
-                emoji = random.choice(bot.server_emojis)
-
-                clean_reply = f"{clean_reply} {str(emoji)}"
-
-        except Exception as e:
-            print(f"Emoji error: {e}")
-
-        # ========================= SEND =========================
-
-        try:
             await message.reply(
                 clean_reply,
                 mention_author=False
             )
 
         except:
+
             await message.channel.send(clean_reply)
 
         add_to_history(
+
             message.channel.id,
+
             "assistant",
-            clean_reply
+
+            f"{AKATSUKI_MEMBERS[responder]['name']}: {reply}"
         )
 
     await bot.process_commands(message)
 
-# ========================= READY =========================
+
+# ========================= READY EVENT =========================
 
 @bot.event
 async def on_ready():
 
-    print(f"✅ Акацуки бот запущен как {bot.user}")
-    print(f"🕐 Moscow time: {now_msk().strftime('%H:%M')}")
+    print(f"✅ Акацуки бот запущен: {bot.user}")
+
+    print(
+        f"🕒 Moscow time: "
+        f"{now_msk().strftime('%H:%M')}"
+    )
 
     guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
 
@@ -1495,29 +915,45 @@ async def on_ready():
 
         bot.server_emojis = guild.emojis
 
-        print(f"✅ Загружено эмодзи: {len(bot.server_emojis)}")
+        print(
+            f"✅ Emojis loaded: "
+            f"{len(bot.server_emojis)}"
+        )
 
     if not random_banter_loop.is_running():
         random_banter_loop.start()
 
-# ========================= CLOSE =========================
+    if not birthday_check_loop.is_running():
+        birthday_check_loop.start()
+
+
+# ========================= CLEANUP =========================
 
 async def close_http_session():
 
     global http_session
 
     if http_session and not http_session.closed:
+
         await http_session.close()
+
 
 # ========================= MAIN =========================
 
 async def main():
 
     try:
+
         await bot.start(DISCORD_TOKEN)
 
     finally:
+
         await close_http_session()
 
+
+# ========================= START =========================
+
 if __name__ == "__main__":
+
     asyncio.run(main())
+    
