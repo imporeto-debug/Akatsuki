@@ -555,11 +555,11 @@ async def on_message(message):
 
     mentioned     = bot.user in message.mentions
     replied_to_bot = (
-        message.reference
-        and message.reference.resolved
-        and isinstance(message.reference.resolved, discord.Message)
-        and message.reference.resolved.author.id == bot.user.id
-    )
+    message.reference
+    and getattr(message.reference, "resolved", None)
+    and isinstance(message.reference.resolved, discord.Message)
+    and message.reference.resolved.author.id == bot.user.id
+)
     has_name = detect_character(message.content)
 
     # ========================= SHOULD REPLY =========================
