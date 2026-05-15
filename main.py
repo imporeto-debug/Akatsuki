@@ -536,8 +536,6 @@ async def ask_deepseek(
         "top_p": 0.9,
         "max_tokens": max_tokens,
         "stream": False,
-        "reasoning": False,
-        "reasoning_effort": "none"
     }
 
     # Принудительная задержка 12 секунд для соблюдения rate limit (5 запросов в минуту)
