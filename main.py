@@ -365,7 +365,7 @@ intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 conversation_history = {}
-http_session = None
+http_session = None   # <--- глобальная сессия для переиспользования
 server_emojis = []
 
 # ========================= GLOBAL REQUEST QUEUE =========================
@@ -474,7 +474,7 @@ def build_character_prompt(characters):
 def format_character_names(characters):
     return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
 
-# ========================= DEEPSEEK API (улучшенный парсинг reasoning) =========================
+# ========================= DEEPSEEK API (с переиспользованием сессии и логированием времени) =========================
 
 def extract_dialogue_from_reasoning(text: str) -> str:
     """Извлекает из reasoning первую строку, которая похожа на реплику персонажа."""
@@ -492,7 +492,7 @@ def extract_dialogue_from_reasoning(text: str) -> str:
     return None
 
 async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3):
-    global last_request_time
+    global last_request_time, http_session
     url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
 
     headers = {
@@ -510,8 +510,15 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
             await asyncio.sleep(wait_time)
         last_request_time = asyncio.get_event_loop().time()
 
+        # --- СОЗДАЁМ ГЛОБАЛЬНУЮ HTTP-СЕССИЮ ПРИ ПЕРВОМ ВЫЗОВЕ ---
+        if http_session is None or http_session.closed:
+            timeout = aiohttp.ClientTimeout(total=120)
+            http_session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=aiohttp.TCPConnector(limit=1)
+            )
+
         for attempt in range(retries):
-            # При повторных попытках понижаем температуру, чтобы ответ был более детерминированным
             current_temp = temperature if attempt == 0 else 0.7
             payload = {
                 "model": "deepseek-v4-pro",
@@ -522,39 +529,39 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                 "stream": False,
             }
             try:
-                timeout = aiohttp.ClientTimeout(total=120)
-                connector = aiohttp.TCPConnector(limit=1)
-                async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                    async with session.post(url, headers=headers, json=payload) as resp:
-                        text = await resp.text()
-                        print(f"STATUS (attempt {attempt+1}):", resp.status)
-                        print("RAW TEXT:", text[:500])
+                start_time = asyncio.get_event_loop().time()   # ---- НАЧАЛО ЗАМЕРА ----
+                async with http_session.post(url, headers=headers, json=payload) as resp:
+                    elapsed = asyncio.get_event_loop().time() - start_time
+                    print(f"⏱️ DeepSeek запрос занял {elapsed:.2f}с (попытка {attempt+1})")
 
-                        if resp.status == 200:
-                            data = json.loads(text)
-                            if "choices" not in data:
-                                continue
-                            choice = data["choices"][0]
-                            if "message" not in choice:
-                                continue
+                    text = await resp.text()
+                    print(f"STATUS (attempt {attempt+1}):", resp.status)
+                    print("RAW TEXT:", text[:500])
 
-                            content = choice["message"].get("content", "").strip()
-                            if content:
-                                return content
+                    if resp.status == 200:
+                        data = json.loads(text)
+                        if "choices" not in data:
+                            continue
+                        choice = data["choices"][0]
+                        if "message" not in choice:
+                            continue
 
-                            reasoning = choice["message"].get("reasoning_content", "").strip()
-                            if reasoning:
-                                dialogue = extract_dialogue_from_reasoning(reasoning)
-                                if dialogue:
-                                    return dialogue
-                                # Если не нашли диалог, не возвращаем reasoning, а пробуем ещё раз
-                                print("No dialogue in reasoning, retrying")
-                                continue
-                        elif resp.status == 429:
-                            print(f"Rate limit, retrying in {2**attempt}s")
-                            await asyncio.sleep(2 ** attempt)
-                        else:
-                            print(f"Non-200 status: {resp.status}")
+                        content = choice["message"].get("content", "").strip()
+                        if content:
+                            return content
+
+                        reasoning = choice["message"].get("reasoning_content", "").strip()
+                        if reasoning:
+                            dialogue = extract_dialogue_from_reasoning(reasoning)
+                            if dialogue:
+                                return dialogue
+                            print("No dialogue in reasoning, retrying")
+                            continue
+                    elif resp.status == 429:
+                        print(f"Rate limit, retrying in {2**attempt}s")
+                        await asyncio.sleep(2 ** attempt)
+                    else:
+                        print(f"Non-200 status: {resp.status}")
             except Exception as e:
                 print(f"Error: {e}")
             if attempt < retries - 1:
