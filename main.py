@@ -31,7 +31,7 @@ response_chance = 15
 MAX_MULTI_REPLY_CHARACTERS = 3
 MULTI_REPLY_CHANCE         = 38
 RANDOM_INTRUSION_CHANCE    = 25
-PARTNER_JOIN_CHANCE        = 55
+PARTNER_JOIN_CHANCE        = 40
 
 # ========================= EMOJI REFRESH =========================
 EMOJI_REFRESH_HOURS = 168  # раз в неделю
@@ -314,10 +314,10 @@ PARTNER_INTERRUPTS = {
 BANTER_TOPICS = [
     "кто разрушил базу",
     "жалобы на миссию",
-    "спор об искусстве",
+    "спор об искусстве или политике",
     "ремонт после взрыва",
     "Кисаме снова съел чужое",
-    "Саске наблюдает из тени",
+    "Саске делает что-то в стиле Саске",
     "внутренние конфликты Акацуки",
 ]
 
