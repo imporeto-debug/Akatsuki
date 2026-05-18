@@ -746,8 +746,8 @@ def clean_dialogue_line(raw: str, default_character_name: str) -> str:
     raw = re.sub(r':\s*\([^)]+\)\s*', ': ', raw)
     raw = re.sub(r'\s*\([^)]+\)\s*$', '', raw)
 
-    # 2. Удаляем звёздочки-эмоции
-    raw = re.sub(r'\*[^*]+\*', '', raw)
+    # 2. Удаляем звёздочки-эмоции (одиночные звёздочки вокруг текста)
+    raw = re.sub(r'(?<!\*)\*(?!\*)([^*]+)\*(?!\*)', r'\1', raw)
 
     # 3. Заменяем многоточия из двух точек на три
     raw = re.sub(r'\.{2,}', '...', raw)
@@ -755,28 +755,40 @@ def clean_dialogue_line(raw: str, default_character_name: str) -> str:
     # 4. Убираем лишние пробелы
     raw = ' '.join(raw.split())
 
-    # 5. Если строка начинается с "Имя:" (латиница) – заменяем
-    if raw.lower().startswith("имя:"):
-        return f"**{default_character_name}**: {raw[4:].strip()}"
+    # 5. Случай: строка начинается с "**:"
+    if raw.startswith('**:'):
+        raw = f"**{default_character_name}**{raw[2:]}"
+        return raw
 
-    # 6. Ищем шаблон "РусскоеИмя: текст" без звёздочек
-    match = re.match(r'^([А-ЯЁ][а-яё]+):\s*(.*)', raw)
+    # 6. Случай: "**Имя**" без двоеточия
+    match = re.match(r'^\*\*([^*]+)\*\*(?![:\s])', raw)
     if match:
-        raw_name = match.group(1)
+        raw = re.sub(r'^\*\*([^*]+)\*\*', r'**\1**:', raw)
+        return raw
+
+    # 7. Уже корректный формат **Имя**: текст
+    if re.match(r'^\*\*[^*]+\*\*:\s*.+', raw):
+        # Удаляем звёздочки внутри текста после двоеточия
+        parts = raw.split(':', 1)
+        if len(parts) == 2:
+            name_part = parts[0] + ':'
+            text_part = re.sub(r'\*', '', parts[1])
+            raw = name_part + text_part
+        return raw
+
+    # 8. "Имя: текст" без звёздочек
+    match = re.match(r'^([А-ЯЁа-яё]+):\s*(.*)', raw)
+    if match:
+        name = match.group(1)
         text = match.group(2).strip()
-        # Находим полное имя из словаря
-        full_name = raw_name
+        full_name = name
         for char_id, char_data in AKATSUKI_MEMBERS.items():
-            if char_data['name'].lower() == raw_name.lower():
+            if char_data['name'].lower() == name.lower():
                 full_name = char_data['name']
                 break
         return f"**{full_name}**: {text}"
 
-    # 7. Если уже в формате **Имя**: текст – оставляем
-    if re.match(r'^\*\*[^*]+\*\*:\s*.+', raw):
-        return raw
-
-    # 8. Иначе – добавляем имя первого отвечающего
+    # 9. Всё остальное – добавляем имя первого отвечающего
     return f"**{default_character_name}**: {raw}"
 
 def fix_truncated_line(line: str) -> str:
@@ -994,6 +1006,11 @@ async def on_message(message):
     # ========================= ПОСТ-ОБРАБОТКА =========================
     cleaned = clean_dialogue_line(reply, AKATSUKI_MEMBERS[responders[0]]['name'])
     cleaned = fix_truncated_line(cleaned)
+
+    # Дополнительная чистка от лишних звёздочек
+    cleaned = re.sub(r'\*\*+', '**', cleaned)
+    cleaned = re.sub(r'\*\*:\s*\*\*', '**:', cleaned)
+    cleaned = re.sub(r':\s*\*\*', ': **', cleaned)
 
     print("CLEANED REPLY:", cleaned)
 
