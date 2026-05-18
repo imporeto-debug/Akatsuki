@@ -34,7 +34,7 @@ RANDOM_INTRUSION_CHANCE    = 25
 PARTNER_JOIN_CHANCE        = 40
 
 # ========================= EMOJI REFRESH =========================
-EMOJI_REFRESH_HOURS = 168  # раз в неделю
+EMOJI_REFRESH_HOURS = 168
 
 # ========================= CHARACTERS =========================
 
@@ -282,27 +282,22 @@ PARTNER_INTERRUPTS = {
         "Итачи опять игнорирует всех.",
         "Он молчит как обычно."
     ],
-
     ("itachi", "kisame"): [
         "Кисаме куда-то ушёл.",
         "Он занят Самехадой."
     ],
-
     ("sasori", "deidara"): [
         "Дейдара снова что-то взорвал.",
         "У Сасори заканчивается терпение."
     ],
-
     ("deidara", "sasori"): [
         "Сасори сидит со своими куклами.",
         "Дейдара опять орёт."
     ],
-
     ("hidan", "kakuzu"): [
         "Хидан бесится.",
         "Какузу считает деньги."
     ],
-
     ("kakuzu", "hidan"): [
         "Какузу устал от Хидана.",
         "Хидан шумит рядом."
@@ -315,7 +310,7 @@ BANTER_TOPICS = [
     "кто разрушил базу",
     "жалобы на миссию",
     "спор об искусстве или политике",
-    "планирование миссии (бюждет, кто участвует, споры и склоки)",
+    "планирование миссии (бюджет, кто участвует, споры и склоки)",
     "ремонт после взрыва",
     "Кисаме снова съел чужое",
     "Саске делает что-то в стиле Саске",
@@ -333,7 +328,7 @@ def load_users():
 
 users_memory = load_users()
 
-# ========================= BUILD CHARACTER WIVES (FULL INFO) =========================
+# ========================= BUILD CHARACTER WIVES =========================
 character_wives_info = {}
 
 for uid, data in users_memory.items():
@@ -371,12 +366,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 conversation_history = {}
 http_session = None
-server_emojis = []  # список кастомных эмодзи с сервера
+server_emojis = []
 
 # ========================= GLOBAL REQUEST QUEUE =========================
 request_semaphore = asyncio.Semaphore(1)
 last_request_time = 0
-request_delay = 13  # секунд между запросами
+request_delay = 13
 
 # ========================= TIME =========================
 
@@ -431,11 +426,6 @@ def detect_user_husbands(uid):
         husbands.append("sasuke")
     return husbands
 
-# ========================= RANDOM HUSBAND =========================
-
-def choose_husband(husbands):
-    return random.choice(husbands) if len(husbands) > 1 else (husbands[0] if husbands else None)
-
 # ========================= MULTI CHARACTER LOGIC =========================
 
 def build_multi_character_list(main_character):
@@ -484,22 +474,17 @@ def build_character_prompt(characters):
 def format_character_names(characters):
     return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
 
-# ========================= DEEPSEEK API WITH QUEUE =========================
+# ========================= DEEPSEEK API =========================
 
-async def ask_deepseek(
-    messages,
-    max_tokens=MAX_RESPONSE_TOKENS,
-    temperature=0.95,
-    retries=5
-):
+async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=5):
     global last_request_time
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"  # обновите при смене
+    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
     }
 
     payload = {
@@ -515,93 +500,85 @@ async def ask_deepseek(
         now = asyncio.get_event_loop().time()
         wait_time = last_request_time + request_delay - now
         if wait_time > 0:
-            print(f"Queue: waiting {wait_time:.2f}s before next request")
+            print(f"Queue: waiting {wait_time:.2f}s")
             await asyncio.sleep(wait_time)
         last_request_time = asyncio.get_event_loop().time()
 
         for attempt in range(retries):
             try:
-                timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
-                connector = aiohttp.TCPConnector(limit=1, ttl_dns_cache=300)
+                timeout = aiohttp.ClientTimeout(total=120)
+                connector = aiohttp.TCPConnector(limit=1)
                 async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
                     async with session.post(url, headers=headers, json=payload) as resp:
                         text = await resp.text()
-                        print(f"STATUS (attempt {attempt+1}/{retries}):", resp.status)
-                        print("RAW:", text[:2000])
+                        print(f"STATUS (attempt {attempt+1}):", resp.status)
 
                         if resp.status == 200:
                             data = json.loads(text)
                             if "choices" not in data:
-                                print("NO CHOICES. Keys:", list(data.keys()))
-                                if "error" in data:
-                                    print("API error:", data["error"])
                                 return None
                             choice = data["choices"][0]
                             if "message" not in choice:
-                                print("NO MESSAGE in choice")
                                 return None
 
                             content = choice["message"].get("content", "").strip()
-                            reasoning = choice["message"].get("reasoning_content", "").strip()
-
                             if content:
                                 return content
 
+                            reasoning = choice["message"].get("reasoning_content", "").strip()
                             if reasoning:
-                                print("Extracting dialogue from reasoning_content")
+                                # Ищем первую строку с диалогом: **Имя**: текст или Имя: текст
                                 lines = reasoning.split('\n')
-                                best_line = None
                                 for line in lines:
-                                    line_stripped = line.strip()
-                                    if line_stripped.startswith('**') and '**:' in line_stripped:
-                                        lower_line = line_stripped.lower()
-                                        if not any(word in lower_line for word in ['[something', 'maybe', 'should', 'could', 'would', 'we need', 'i think', 'first,', 'let me']):
-                                            after_colon = line_stripped.split(':', 1)[1].strip() if ':' in line_stripped else ''
-                                            if not (after_colon.startswith('[') and '?' in after_colon):
-                                                best_line = line_stripped
-                                                break
-                                if best_line:
-                                    print(f"Extracted: {best_line[:100]}")
-                                    return best_line
-                                else:
-                                    print("No valid dialogue pattern found in reasoning")
-                                    return None
-                            else:
-                                print("Empty content and no reasoning")
-                                return None
-
+                                    line = line.strip()
+                                    if line.startswith('**') and '**:' in line:
+                                        return line
+                                    if re.match(r'^[А-ЯЁа-яё]+:', line):
+                                        return line
+                            return None
                         elif resp.status == 429:
-                            wait = 2 ** attempt
-                            print(f"Rate limited (429). Retrying in {wait} sec...")
-                            await asyncio.sleep(wait)
-                        elif 500 <= resp.status < 600:
-                            print(f"Server error {resp.status}. Retrying in {2**attempt} sec...")
                             await asyncio.sleep(2 ** attempt)
                         else:
-                            print(f"Non-200 status: {resp.status}")
-                            print("Error body:", text[:500])
                             return None
-
-            except asyncio.TimeoutError:
-                print(f"Request timeout (attempt {attempt+1})")
-                if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                else:
-                    return None
-            except aiohttp.ClientError as e:
-                print(f"HTTP client error: {repr(e)}")
-                if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                else:
-                    return None
             except Exception as e:
-                print(f"Unexpected error: {repr(e)}")
+                print(f"Error: {e}")
                 if attempt < retries - 1:
                     await asyncio.sleep(2 ** attempt)
                 else:
                     return None
-
     return None
+
+# ========================= POST-PROCESSING (минимальные исправления) =========================
+
+def fix_formatting(text: str, default_name: str) -> str:
+    """Исправляет только самые проблемные форматы: **: и **Имя** без двоеточия."""
+    if not text:
+        return text
+
+    # Случай **: текст
+    if text.startswith('**:'):
+        text = f"**{default_name}**{text[2:]}"
+
+    # Случай **Имя** текст (без двоеточия)
+    match = re.match(r'^\*\*([^*]+)\*\*(?!:)', text)
+    if match:
+        name = match.group(1)
+        rest = text[len(match.group(0)):]
+        text = f"**{name}**:{rest}"
+
+    # Случай Имя: текст без звёздочек
+    match = re.match(r'^([А-ЯЁа-яё]+):\s*(.*)', text)
+    if match:
+        name = match.group(1)
+        # Найдём полное имя
+        for char_id, char_data in AKATSUKI_MEMBERS.items():
+            if char_data['name'].lower() == name.lower():
+                name = char_data['name']
+                break
+        rest = match.group(2)
+        text = f"**{name}**: {rest}"
+
+    return text
 
 # ========================= BANTER GENERATION =========================
 
@@ -615,28 +592,7 @@ async def send_akatsuki_banter():
     character_prompt = build_character_prompt(participants)
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
-        {"role": "user", "content": f"""
-Сделай живой диалог Акацуки.
-
-Участники:
-{participant_names}
-
-Тема:
-{topic}
-
-ВАЖНО:
-- персонажи спорят
-- перебивают друг друга
-- могут насмехаться
-- могут резко влезать в разговор
-- разговор должен ощущаться живым
-- не делай их одинаковыми
-
-ФОРМАТ:
-**Имя**: текст
-
-Минимум 8 сообщений.
-"""},
+        {"role": "user", "content": f"Сделай живой диалог Акацуки.\nУчастники: {participant_names}\nТема: {topic}\nФОРМАТ: **Имя**: текст\nМинимум 8 сообщений."}
     ]
     response = await ask_deepseek(prompt)
     if response:
@@ -672,28 +628,7 @@ async def send_birthday_message(uid, data):
     character_prompt = build_character_prompt(participants)
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
-        {"role": "user", "content": f"""
-Сгенерируй поздравление.
-
-Адресат:
-{name}
-
-Участники:
-{participant_names}
-
-ВАЖНО:
-- персонажи остаются в характере
-- но становятся мягче
-- допускается забота
-- лёгкий флирт
-- могут подкалывать друг друга
-- могут спорить даже во время поздравления
-
-ФОРМАТ:
-**Имя**: текст
-
-8-12 сообщений
-"""},
+        {"role": "user", "content": f"Сгенерируй поздравление для {name}.\nУчастники: {participant_names}\nФОРМАТ: **Имя**: текст\n8-12 сообщений."}
     ]
     response = await ask_deepseek(prompt)
     if response:
@@ -728,80 +663,20 @@ async def refresh_emojis_task():
     if guild:
         await guild.fetch_emojis()
         server_emojis = guild.emojis
-        print(f"✅ Эмодзи обновлены: {len(server_emojis)} шт.")
-    else:
-        print("❌ Гильдия для эмодзи не найдена")
+        print(f"✅ Эмодзи обновлены: {len(server_emojis)}")
 
-# ========================= POST-PROCESSING =========================
+# ========================= COMMANDS =========================
 
-def clean_dialogue_line(raw: str, default_character_name: str) -> str:
-    """
-    Очищает сырую строку ответа модели и приводит к формату **Имя**: текст.
-    """
-    if not raw:
-        return raw
-
-    # 1. Удаляем английские эмоции в круглых скобках
-    raw = re.sub(r'^\s*\([^)]+\)\s*', '', raw)
-    raw = re.sub(r':\s*\([^)]+\)\s*', ': ', raw)
-    raw = re.sub(r'\s*\([^)]+\)\s*$', '', raw)
-
-    # 2. Удаляем звёздочки-эмоции (одиночные звёздочки вокруг текста)
-    raw = re.sub(r'(?<!\*)\*(?!\*)([^*]+)\*(?!\*)', r'\1', raw)
-
-    # 3. Заменяем многоточия из двух точек на три
-    raw = re.sub(r'\.{2,}', '...', raw)
-
-    # 4. Убираем лишние пробелы
-    raw = ' '.join(raw.split())
-
-    # 5. Случай: строка начинается с "**:"
-    if raw.startswith('**:'):
-        raw = f"**{default_character_name}**{raw[2:]}"
-        return raw
-
-    # 6. Случай: "**Имя**" без двоеточия
-    match = re.match(r'^\*\*([^*]+)\*\*(?![:\s])', raw)
-    if match:
-        raw = re.sub(r'^\*\*([^*]+)\*\*', r'**\1**:', raw)
-        return raw
-
-    # 7. Уже корректный формат **Имя**: текст
-    if re.match(r'^\*\*[^*]+\*\*:\s*.+', raw):
-        # Удаляем звёздочки внутри текста после двоеточия
-        parts = raw.split(':', 1)
-        if len(parts) == 2:
-            name_part = parts[0] + ':'
-            text_part = re.sub(r'\*', '', parts[1])
-            raw = name_part + text_part
-        return raw
-
-    # 8. "Имя: текст" без звёздочек
-    match = re.match(r'^([А-ЯЁа-яё]+):\s*(.*)', raw)
-    if match:
-        name = match.group(1)
-        text = match.group(2).strip()
-        full_name = name
-        for char_id, char_data in AKATSUKI_MEMBERS.items():
-            if char_data['name'].lower() == name.lower():
-                full_name = char_data['name']
-                break
-        return f"**{full_name}**: {text}"
-
-    # 9. Всё остальное – добавляем имя первого отвечающего
-    return f"**{default_character_name}**: {raw}"
-
-def fix_truncated_line(line: str) -> str:
-    """Добавляет многоточие, если фраза явно обрывается."""
-    if not line:
-        return line
-    if re.search(r'[.!?…]\s*$', line):
-        return line
-    if len(line) > 30 and not line[-1].isalnum():
-        return line + '...'
-    if len(line) > 50:
-        return line + '...'
-    return line
+@bot.command(name='обновить_эмодзи')
+async def manual_refresh_emojis(ctx):
+    global server_emojis
+    guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
+    if not guild:
+        await ctx.send("❌ Сервер с эмодзи не найден")
+        return
+    await guild.fetch_emojis()
+    server_emojis = guild.emojis
+    await ctx.send(f"✅ Загружено {len(server_emojis)} эмодзи")
 
 # ========================= MESSAGE HANDLER =========================
 
@@ -812,39 +687,28 @@ async def on_message(message):
 
     add_to_history(message.channel.id, "user", message.content)
 
-    # ========================= DETECTION =========================
-
-    mentioned = bot.user in message.mentions
-    replied_to_bot = (message.reference and getattr(message.reference, "resolved", None) and
-                      isinstance(message.reference.resolved, discord.Message) and
-                      message.reference.resolved.author.id == bot.user.id)
-    has_name = detect_character(message.content)
-
-    # ========================= SHOULD REPLY =========================
-
     if message.channel.id != MAIN_CHANNEL_ID:
         await bot.process_commands(message)
         return
 
-    reply_needed = (mentioned or replied_to_bot or has_name or
-                    random.randint(1, 100) <= response_chance)
+    mentioned = bot.user in message.mentions
+    replied_to_bot = (message.reference and message.reference.resolved and 
+                      isinstance(message.reference.resolved, discord.Message) and
+                      message.reference.resolved.author.id == bot.user.id)
+    has_name = detect_character(message.content)
+
+    reply_needed = (mentioned or replied_to_bot or has_name or random.randint(1, 100) <= response_chance)
     if not reply_needed:
         await bot.process_commands(message)
         return
 
-    # ========================= WIFE DETECTION =========================
-
     user_husbands = detect_user_husbands(message.author.id)
     wife_character = None
     for husband in user_husbands:
-        aliases = AKATSUKI_MEMBERS[husband]["aliases"]
-        if any(alias.lower() in message.content.lower() for alias in aliases):
+        if any(alias.lower() in message.content.lower() for alias in AKATSUKI_MEMBERS[husband]["aliases"]):
             wife_character = husband
             break
-
     is_wife = len(user_husbands) > 0
-
-    # ========================= MAIN RESPONDER =========================
 
     if wife_character:
         responder = wife_character
@@ -853,144 +717,62 @@ async def on_message(message):
     else:
         responder, interrupted, original_target = choose_responder(message.content)
 
-    # ========================= MULTI CHARACTER =========================
-
     responders = (build_multi_character_list(responder) if random.randint(1, 100) <= MULTI_REPLY_CHANCE else [responder])
     if wife_character and wife_character not in responders:
         responders.insert(0, wife_character)
     responders = list(dict.fromkeys(responders))[:MAX_MULTI_REPLY_CHARACTERS]
-
-    # ========================= BUILD PROMPT =========================
 
     character_prompt = build_character_prompt(responders)
     system_prompt = BASE_SYSTEM_PROMPT + "\n" + character_prompt
 
     extra_context = ""
 
-    # ---- Информация о жёнах для каждого отвечающего персонажа ----
-    wives_info_for_responders = []
     for resp_char in responders:
         wives = character_wives_info.get(resp_char, [])
         if wives:
             for wife in wives:
-                wife_name = wife["name"]
-                wife_info = wife.get("info", "")
-                wife_birthday = wife.get("birthday", "")
-                desc = f"- {AKATSUKI_MEMBERS[resp_char]['name']} имеет жену по имени {wife_name}."
-                if wife_info:
-                    desc += f" О ней известно: {wife_info}."
-                if wife_birthday:
-                    desc += f" День рождения: {wife_birthday}."
-                wives_info_for_responders.append(desc)
-    if wives_info_for_responders:
-        extra_context += "Важная информация о семейном положении персонажей:\n" + "\n".join(wives_info_for_responders) + "\n"
-        extra_context += "Если пользователь спрашивает про 'твою жену', 'что подаришь жене' и т.п., персонаж должен отвечать именно про свою жену (или жён), а не отрицать её наличие. Он хорошо знает свою жену, её интересы и особенности.\n"
+                extra_context += f"- {AKATSUKI_MEMBERS[resp_char]['name']} имеет жену: {wife['name']}."
+                if wife['info']:
+                    extra_context += f" О ней: {wife['info']}."
+                if wife['birthday']:
+                    extra_context += f" ДР: {wife['birthday']}."
+                extra_context += "\n"
+    if extra_context:
+        extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
-    # ---- Явно указываем, кем является автор для каждого персонажа ----
     for resp_char in responders:
         char_name = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
-            extra_context += f"{char_name} знает, что автор сообщения — его жена.\n"
+            extra_context += f"{char_name} знает — автор его жена.\n"
         else:
-            wives_names = ', '.join([w['name'] for w in character_wives_info.get(resp_char, [])]) if character_wives_info.get(resp_char) else 'никого'
-            extra_context += f"{char_name} знает, что автор сообщения НЕ является его женой. Автор — {message.author.display_name}, а жену {char_name} зовут {wives_names}.\n"
+            extra_context += f"{char_name} знает — автор НЕ его жена.\n"
 
-    # ---- Если пользователь сам является женой кого-то ----
     if wife_character:
-        extra_context += f"""
-Пользователь является женой:
-{AKATSUKI_MEMBERS[wife_character]["name"]}
-
-ВАЖНО:
-- персонаж ЗНАЕТ пользователя
-- персонаж ПОМНИТ что это его жена
-- нельзя вести себя как с незнакомцем
-- нельзя спрашивать кто это
-- нельзя отрицать отношения
-
-МОЖНО:
-- ревновать
-- грубо флиртовать
-- проявлять собственничество
-- вести себя как супруги
-- проявлять заботу в стиле персонажа
-
-Остальные персонажи тоже знают об этих отношениях и могут реагировать на них.
-"""
-    elif is_wife and not wife_character:
-        husbands_list = format_character_names(user_husbands)
-        extra_context += f"""
-ВАЖНО: Пользователь является женой следующих персонажей: {husbands_list}.
-
-Персонаж, который сейчас отвечает ({AKATSUKI_MEMBERS[responder]['name']}), знает пользователя как жену, если он входит в этот список.
-Если он не входит, он всё равно в курсе, что пользователь — жена другого члена Акацуки, и может подколоть, пошутить или никак не реагировать.
-"""
-
-    if len(user_husbands) >= 2:
-        extra_context += f"""
-ВАЖНО:
-У пользователя несколько мужей:
-{format_character_names(user_husbands)}
-
-Все эти персонажи знают пользователя как свою жену.
-"""
+        extra_context += f"Пользователь — жена {AKATSUKI_MEMBERS[wife_character]['name']}. Относись соответственно.\n"
+    elif is_wife:
+        extra_context += f"Пользователь — жена {format_character_names(user_husbands)}.\n"
 
     if interrupted and original_target:
-        interrupt_line = random.choice(PARTNER_INTERRUPTS.get((responder, original_target), ["Он занят."]))
-        extra_context += f"""
-{AKATSUKI_MEMBERS[responder]["name"]} отвечает вместо {AKATSUKI_MEMBERS[original_target]["name"]}
-Причина: {interrupt_line}
-"""
+        extra_context += f"{AKATSUKI_MEMBERS[responder]['name']} отвечает вместо {AKATSUKI_MEMBERS[original_target]['name']}\n"
 
     if len(responders) >= 2:
-        extra_context += """
-ВАЖНО:
-- персонажи могут перебивать друг друга
-- могут спорить
-- могут язвить
-- могут игнорировать вопрос
-- могут реагировать друг на друга
-- не обязаны говорить одинаково много
-- некоторые могут внезапно влезать
-"""
+        extra_context += "Могут перебивать, спорить, язвить.\n"
 
     history = conversation_history.get(message.channel.id, [])[-8:]
 
-    # ---------- ФОРМИРУЕМ USER_CONTEXT С ЭМОДЗИ ----------
-    user_context = f"""
-Автор:
-{message.author.display_name}
-
-Сообщение:
-{message.content}
-
-Отвечают:
-{format_character_names(responders)}
-
+    user_context = f"""Автор: {message.author.display_name}
+Сообщение: {message.content}
+Отвечают: {format_character_names(responders)}
 {extra_context}
+ФОРМАТ: **Имя**: текст
+Минимум 2 сообщения если персонажей несколько."""
 
-ФОРМАТ ОБЯЗАТЕЛЕН:
-
-**Имя**: текст
-
-ВАЖНО:
-- минимум 2 сообщения если участвует несколько персонажей
-- персонажи должны реагировать друг на друга
-- не делай одинаковые характеры
-- не ломай формат
-"""
-
-    # Добавляем информацию о доступных кастомных эмодзи
     if server_emojis:
-        # Берём первые 30, чтобы не перегружать контекст
         emojis_list = [str(e) for e in server_emojis[:30]]
-        user_context += f"\n\nДоступные эмодзи: {', '.join(emojis_list)}."
-        user_context += " Ты МОЖЕШЬ ИНОГДА добавлять в конец своего сообщения НЕ БОЛЕЕ ОДНОГО подходящего по смыслу эмодзи из этого списка."
-        user_context += " Если отвечают несколько персонажей, каждый может добавить один эмодзи в конец своей реплики. Не используй эмодзи в каждом ответе, только когда это уместно (для выражения эмоции или усиления фразы)."
+        user_context += f"\nДоступные эмодзи: {', '.join(emojis_list)}."
+        user_context += " Можешь ИНОГДА добавить в конец НЕ БОЛЕЕ ОДНОГО эмодзи."
 
     prompt = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_context}]
-
-    # ========================= SEND =========================
 
     await add_multi_reactions(message, responders)
 
@@ -1001,20 +783,14 @@ async def on_message(message):
 
     if not reply:
         await message.reply(f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: Тц. Связь сдохла.", mention_author=False)
+        await bot.process_commands(message)
         return
 
-    # ========================= ПОСТ-ОБРАБОТКА =========================
-    cleaned = clean_dialogue_line(reply, AKATSUKI_MEMBERS[responders[0]]['name'])
-    cleaned = fix_truncated_line(cleaned)
-
-    # Дополнительная чистка от лишних звёздочек
-    cleaned = re.sub(r'\*\*+', '**', cleaned)
-    cleaned = re.sub(r'\*\*:\s*\*\*', '**:', cleaned)
-    cleaned = re.sub(r':\s*\*\*', ': **', cleaned)
+    # Применяем только минимальное исправление формата
+    cleaned = fix_formatting(reply, AKATSUKI_MEMBERS[responders[0]]['name'])
 
     print("CLEANED REPLY:", cleaned)
 
-    # ========================= ОТПРАВКА =========================
     try:
         await message.reply(cleaned, mention_author=False)
     except Exception as e:
@@ -1024,19 +800,6 @@ async def on_message(message):
     add_to_history(message.channel.id, "assistant", cleaned)
     await bot.process_commands(message)
 
-# ========================= КОМАНДЫ =========================
-
-@bot.command(name='обновить_эмодзи')
-async def manual_refresh_emojis(ctx):
-    global server_emojis
-    guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
-    if not guild:
-        await ctx.send("❌ Сервер с эмодзи не найден.")
-        return
-    await guild.fetch_emojis()
-    server_emojis = guild.emojis
-    await ctx.send(f"✅ Загружено {len(server_emojis)} кастомных эмодзи.")
-
 # ========================= READY EVENT =========================
 
 @bot.event
@@ -1044,15 +807,11 @@ async def on_ready():
     global server_emojis
     print(f"✅ Акацуки бот запущен: {bot.user}")
     print(f"🕒 Moscow time: {now_msk().strftime('%H:%M')}")
-    # Загружаем эмодзи
     guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
     if guild:
         await guild.fetch_emojis()
         server_emojis = guild.emojis
-        print(f"✅ Загружено {len(server_emojis)} кастомных эмодзи.")
-    else:
-        print("❌ Гильдия для эмодзи не найдена. Проверьте GUILD_ID_FOR_EMOJIS")
-    # Запускаем задачи
+        print(f"✅ Загружено {len(server_emojis)} эмодзи")
     if not random_banter_loop.is_running():
         random_banter_loop.start()
     if not birthday_check_loop.is_running():
@@ -1060,7 +819,7 @@ async def on_ready():
     if not refresh_emojis_task.is_running():
         refresh_emojis_task.start()
 
-# ========================= CLEANUP + MAIN =========================
+# ========================= CLEANUP =========================
 
 async def close_http_session():
     global http_session
