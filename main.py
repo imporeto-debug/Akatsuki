@@ -512,22 +512,27 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                     async with session.post(url, headers=headers, json=payload) as resp:
                         text = await resp.text()
                         print(f"STATUS (attempt {attempt+1}):", resp.status)
+                        print("RAW TEXT:", text[:500])
 
                         if resp.status == 200:
                             data = json.loads(text)
                             if "choices" not in data:
+                                print("NO CHOICES")
                                 return None
                             choice = data["choices"][0]
                             if "message" not in choice:
+                                print("NO MESSAGE")
                                 return None
 
                             content = choice["message"].get("content", "").strip()
                             if content:
+                                print("GOT CONTENT")
                                 return content
 
                             reasoning = choice["message"].get("reasoning_content", "").strip()
                             if reasoning:
-                                # Ищем первую строку с диалогом: **Имя**: текст или Имя: текст
+                                print("GOT REASONING")
+                                # Пытаемся найти строку с диалогом
                                 lines = reasoning.split('\n')
                                 for line in lines:
                                     line = line.strip()
@@ -535,10 +540,16 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                                         return line
                                     if re.match(r'^[А-ЯЁа-яё]+:', line):
                                         return line
+                                # Если не нашли, возвращаем первые 300 символов reasoning
+                                if len(reasoning) > 10:
+                                    return reasoning[:300]
+                            print("EMPTY CONTENT AND REASONING")
                             return None
                         elif resp.status == 429:
+                            print(f"Rate limit, retrying in {2**attempt}s")
                             await asyncio.sleep(2 ** attempt)
                         else:
+                            print(f"Non-200 status: {resp.status}")
                             return None
             except Exception as e:
                 print(f"Error: {e}")
@@ -548,10 +559,10 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                     return None
     return None
 
-# ========================= POST-PROCESSING (минимальные исправления) =========================
+# ========================= POST-PROCESSING =========================
 
-def fix_formatting(text: str, default_name: str) -> str:
-    """Исправляет только самые проблемные форматы: **: и **Имя** без двоеточия."""
+def fix_bad_format(text: str, default_name: str) -> str:
+    """Исправляет **: и **Имя** без двоеточия, остальное оставляет как есть."""
     if not text:
         return text
 
@@ -570,13 +581,18 @@ def fix_formatting(text: str, default_name: str) -> str:
     match = re.match(r'^([А-ЯЁа-яё]+):\s*(.*)', text)
     if match:
         name = match.group(1)
-        # Найдём полное имя
-        for char_id, char_data in AKATSUKI_MEMBERS.items():
-            if char_data['name'].lower() == name.lower():
-                name = char_data['name']
+        # Ищем полное имя
+        full_name = name
+        for cid, cdata in AKATSUKI_MEMBERS.items():
+            if cdata['name'].lower() == name.lower():
+                full_name = cdata['name']
                 break
         rest = match.group(2)
-        text = f"**{name}**: {rest}"
+        text = f"**{full_name}**: {rest}"
+
+    # Если нет ни одного формата, добавляем имя по умолчанию
+    if not text.startswith('**'):
+        text = f"**{default_name}**: {text}"
 
     return text
 
@@ -727,6 +743,7 @@ async def on_message(message):
 
     extra_context = ""
 
+    # ---- Информация о жёнах ----
     for resp_char in responders:
         wives = character_wives_info.get(resp_char, [])
         if wives:
@@ -740,6 +757,7 @@ async def on_message(message):
     if extra_context:
         extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
+    # ---- Кем является автор ----
     for resp_char in responders:
         char_name = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
@@ -786,8 +804,8 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # Применяем только минимальное исправление формата
-    cleaned = fix_formatting(reply, AKATSUKI_MEMBERS[responders[0]]['name'])
+    # Применяем только исправление формата
+    cleaned = fix_bad_format(reply, AKATSUKI_MEMBERS[responders[0]]['name'])
 
     print("CLEANED REPLY:", cleaned)
 
