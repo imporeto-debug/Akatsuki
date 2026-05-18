@@ -942,7 +942,7 @@ async def on_message(message):
 Причина: {interrupt_line}
 """
 
-    if len(responders) >= 2:
+        if len(responders) >= 2:
         extra_context += """
 ВАЖНО:
 - персонажи могут перебивать друг друга
