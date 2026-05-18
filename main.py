@@ -474,9 +474,24 @@ def build_character_prompt(characters):
 def format_character_names(characters):
     return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
 
-# ========================= DEEPSEEK API =========================
+# ========================= DEEPSEEK API (улучшенный парсинг reasoning) =========================
 
-async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=5):
+def extract_dialogue_from_reasoning(text: str) -> str:
+    """Извлекает из reasoning первую строку, которая похожа на реплику персонажа."""
+    lines = text.split('\n')
+    for line in lines:
+        line = line.strip()
+        # Ищем **Имя**: текст
+        if line.startswith('**') and '**:' in line:
+            # Дополнительно проверяем, что после ** не идёт мусор типа "We need"
+            if not any(word in line.lower() for word in ['we need', 'i think', 'maybe', 'should']):
+                return line
+        # Ищем Имя: текст без звёздочек
+        if re.match(r'^[А-ЯЁ][а-яё]+:', line):
+            return line
+    return None
+
+async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3):
     global last_request_time
     url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
 
@@ -485,15 +500,6 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
         "Content-Type": "application/json",
         "Accept": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-
-    payload = {
-        "model": "deepseek-v4-pro",
-        "messages": messages,
-        "temperature": temperature,
-        "top_p": 0.9,
-        "max_tokens": max_tokens,
-        "stream": False,
     }
 
     async with request_semaphore:
@@ -505,6 +511,16 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
         last_request_time = asyncio.get_event_loop().time()
 
         for attempt in range(retries):
+            # При повторных попытках понижаем температуру, чтобы ответ был более детерминированным
+            current_temp = temperature if attempt == 0 else 0.7
+            payload = {
+                "model": "deepseek-v4-pro",
+                "messages": messages,
+                "temperature": current_temp,
+                "top_p": 0.9,
+                "max_tokens": max_tokens,
+                "stream": False,
+            }
             try:
                 timeout = aiohttp.ClientTimeout(total=120)
                 connector = aiohttp.TCPConnector(limit=1)
@@ -517,71 +533,50 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                         if resp.status == 200:
                             data = json.loads(text)
                             if "choices" not in data:
-                                print("NO CHOICES")
-                                return None
+                                continue
                             choice = data["choices"][0]
                             if "message" not in choice:
-                                print("NO MESSAGE")
-                                return None
+                                continue
 
                             content = choice["message"].get("content", "").strip()
                             if content:
-                                print("GOT CONTENT")
                                 return content
 
                             reasoning = choice["message"].get("reasoning_content", "").strip()
                             if reasoning:
-                                print("GOT REASONING")
-                                # Пытаемся найти строку с диалогом
-                                lines = reasoning.split('\n')
-                                for line in lines:
-                                    line = line.strip()
-                                    if line.startswith('**') and '**:' in line:
-                                        return line
-                                    if re.match(r'^[А-ЯЁа-яё]+:', line):
-                                        return line
-                                # Если не нашли, возвращаем первые 300 символов reasoning
-                                if len(reasoning) > 10:
-                                    return reasoning[:300]
-                            print("EMPTY CONTENT AND REASONING")
-                            return None
+                                dialogue = extract_dialogue_from_reasoning(reasoning)
+                                if dialogue:
+                                    return dialogue
+                                # Если не нашли диалог, не возвращаем reasoning, а пробуем ещё раз
+                                print("No dialogue in reasoning, retrying")
+                                continue
                         elif resp.status == 429:
                             print(f"Rate limit, retrying in {2**attempt}s")
                             await asyncio.sleep(2 ** attempt)
                         else:
                             print(f"Non-200 status: {resp.status}")
-                            return None
             except Exception as e:
                 print(f"Error: {e}")
-                if attempt < retries - 1:
-                    await asyncio.sleep(2 ** attempt)
-                else:
-                    return None
+            if attempt < retries - 1:
+                await asyncio.sleep(2 ** attempt)
     return None
 
 # ========================= POST-PROCESSING =========================
 
 def fix_bad_format(text: str, default_name: str) -> str:
-    """Исправляет **: и **Имя** без двоеточия, остальное оставляет как есть."""
+    """Исправляет **: и **Имя** без двоеточия."""
     if not text:
         return text
-
-    # Случай **: текст
     if text.startswith('**:'):
         text = f"**{default_name}**{text[2:]}"
-
-    # Случай **Имя** текст (без двоеточия)
     match = re.match(r'^\*\*([^*]+)\*\*(?!:)', text)
     if match:
         name = match.group(1)
         rest = text[len(match.group(0)):]
         text = f"**{name}**:{rest}"
-
-    # Случай Имя: текст без звёздочек
     match = re.match(r'^([А-ЯЁа-яё]+):\s*(.*)', text)
     if match:
         name = match.group(1)
-        # Ищем полное имя
         full_name = name
         for cid, cdata in AKATSUKI_MEMBERS.items():
             if cdata['name'].lower() == name.lower():
@@ -589,11 +584,8 @@ def fix_bad_format(text: str, default_name: str) -> str:
                 break
         rest = match.group(2)
         text = f"**{full_name}**: {rest}"
-
-    # Если нет ни одного формата, добавляем имя по умолчанию
     if not text.startswith('**'):
         text = f"**{default_name}**: {text}"
-
     return text
 
 # ========================= BANTER GENERATION =========================
@@ -804,9 +796,7 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # Применяем только исправление формата
     cleaned = fix_bad_format(reply, AKATSUKI_MEMBERS[responders[0]]['name'])
-
     print("CLEANED REPLY:", cleaned)
 
     try:
