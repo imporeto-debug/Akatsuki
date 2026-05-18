@@ -15,8 +15,8 @@ if not DISCORD_TOKEN or not DEEPSEEK_API_KEY:
 
 MSK = ZoneInfo("Europe/Moscow")
 
-MAX_RESPONSE_TOKENS    = 1200
-MAX_HISTORY_MESSAGES   = 20
+MAX_RESPONSE_TOKENS    = 1500
+MAX_HISTORY_MESSAGES   = 15
 
 # ========================= CHANNELS =========================
 
@@ -32,6 +32,9 @@ MAX_MULTI_REPLY_CHARACTERS = 3
 MULTI_REPLY_CHANCE         = 38
 RANDOM_INTRUSION_CHANCE    = 25
 PARTNER_JOIN_CHANCE        = 55
+
+# ========================= EMOJI REFRESH =========================
+EMOJI_REFRESH_HOURS = 168  # раз в неделю
 
 # ========================= CHARACTERS =========================
 
@@ -162,26 +165,25 @@ Speech style:
 """,
 
     "deidara": """
-You are Deidara.
+You are Deidara — explosive artist of the Akatsuki, emotional and dramatic.
 
 Personality:
-- Emotional, explosive, unstable temperament
-- Obsessed with art (especially explosions)
-- Easily offended and reacts dramatically
-- Talks a lot, interrupts others
-- Competitive and prideful
+- Obsessed with art (mostly explosions), but can appreciate others' impressive techniques
+- Easily offended by criticism → threatens to blow things up or rants
+- Gets bored quickly, hates long talks, money talk, planning
+- Impulsive, naive about sarcasm, sometimes childish (whining, bragging)
+- Competitive with Sasori, but may admit puppets have some beauty
 
-Behavior rules:
-- Gets triggered by criticism of his art
-- Argues constantly with Sasori
-- Overreacts to minor comments
-- Uses dramatic emotional language
-- Can switch from playful to angry instantly
+Behavior:
+- When bored: suggests blowing something up or interrupts with "Слушай!"
+- When praised: becomes boastful, offers a "demonstration"
+- Complains about mundane things: rain, uniforms, wet clay
+- Short attention span — fidgets, yawns during long explanations
 
 Speech style:
-- Fast, expressive, chaotic
-- Uses emotional emphasis
-- Often exclaims or exaggerates
+- Fast, chaotic, exclaims often
+- Uses filler sounds: "мм", "хм", "ун", "кхм"
+- Interrupts others, switches quickly from playful to angry
 """,
 
     "sasori": """
@@ -254,27 +256,23 @@ Speech style:
 """,
 
     "sasuke": """
-You are Sasuke Uchiha.
+You are Sasuke Uchiha — survivor of the clan massacre, obsessed with revenge, cold and emotionally distant.
 
 Personality:
-- Cold, detached, emotionally distant
-- Minimal emotional expression
-- Brooding and observant
-- Easily irritated by stupidity
-- Keeps distance from everyone
+- Brooding, rarely speaks, easily irritated by weakness or noise
+- Distrustful, keeps everyone at a distance
+- Proud of being Uchiha, but hates reminders of Itachi (unless he brings it up)
 
-Behavior rules:
-- Rarely engages in long conversations
-- Responds only when necessary
-- Can cut off people abruptly
-- Often ignores provocations
-- Carries quiet intensity in speech
+Behavior:
+- Never starts conversations. Replies with 2–5 words.
+- Ignores most provocations. Sharp retort only if insulted directly.
+- Ends dialogues with "..." or "Хватит."
+- Shows emotion (anger/contempt) only when clan or strength is mocked.
 
 Speech style:
-- Very short replies
-- Low emotional variation
-- Sharp and direct
-"""
+- Minimal words, monotone, often ends with "..."
+- No filler words, no jokes, no elaboration.
+""",
 }
 
 # ========================= INTERRUPTS =========================
@@ -372,6 +370,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 conversation_history = {}
 http_session = None
+server_emojis = []  # список кастомных эмодзи с сервера
+
+# ========================= GLOBAL REQUEST QUEUE =========================
+request_semaphore = asyncio.Semaphore(1)
+last_request_time = 0
+request_delay = 13  # секунд между запросами
 
 # ========================= TIME =========================
 
@@ -479,15 +483,16 @@ def build_character_prompt(characters):
 def format_character_names(characters):
     return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
 
-# ========================= DEEPSEEK API =========================
+# ========================= DEEPSEEK API WITH QUEUE =========================
 
 async def ask_deepseek(
     messages,
     max_tokens=MAX_RESPONSE_TOKENS,
     temperature=0.95,
-    retries=2
+    retries=5
 ):
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"  # Обновите при смене адреса
+    global last_request_time
+    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"  # обновите при смене
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -505,69 +510,96 @@ async def ask_deepseek(
         "stream": False,
     }
 
-    await asyncio.sleep(12)  # rate limit
+    async with request_semaphore:
+        now = asyncio.get_event_loop().time()
+        wait_time = last_request_time + request_delay - now
+        if wait_time > 0:
+            print(f"Queue: waiting {wait_time:.2f}s before next request")
+            await asyncio.sleep(wait_time)
+        last_request_time = asyncio.get_event_loop().time()
 
-    for attempt in range(retries):
-        try:
-            timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
-            connector = aiohttp.TCPConnector(limit=20, ttl_dns_cache=300)
-            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
-                async with session.post(url, headers=headers, json=payload) as resp:
-                    text = await resp.text()
-                    print(f"STATUS (attempt {attempt+1}):", resp.status)
-                    print("RAW:", text[:2000])
+        for attempt in range(retries):
+            try:
+                timeout = aiohttp.ClientTimeout(total=120, connect=30, sock_read=120)
+                connector = aiohttp.TCPConnector(limit=1, ttl_dns_cache=300)
+                async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                    async with session.post(url, headers=headers, json=payload) as resp:
+                        text = await resp.text()
+                        print(f"STATUS (attempt {attempt+1}/{retries}):", resp.status)
+                        print("RAW:", text[:2000])
 
-                    if resp.status == 200:
-                        data = json.loads(text)
-                        if "choices" not in data:
-                            print("NO CHOICES")
-                            return None
-                        choice = data["choices"][0]
-                        if "message" not in choice:
-                            print("NO MESSAGE")
-                            return None
-
-                        content = choice["message"].get("content", "").strip()
-                        reasoning = choice["message"].get("reasoning_content", "").strip()
-
-                        if content:
-                            return content
-
-                        if reasoning:
-                            print("Extracting dialogue from reasoning_content")
-                            lines = reasoning.split('\n')
-                            best_line = None
-                            for line in lines:
-                                line_stripped = line.strip()
-                                if line_stripped.startswith('**') and '**:' in line_stripped:
-                                    lower_line = line_stripped.lower()
-                                    if not any(word in lower_line for word in ['[something', 'maybe', 'should', 'could', 'would', 'we need', 'i think', 'first,', 'let me']):
-                                        after_colon = line_stripped.split(':', 1)[1].strip() if ':' in line_stripped else ''
-                                        if not (after_colon.startswith('[') and '?' in after_colon):
-                                            best_line = line_stripped
-                                            break
-                            if best_line:
-                                print(f"Extracted: {best_line[:100]}")
-                                return best_line
-                            else:
-                                print("No valid dialogue pattern found in reasoning")
+                        if resp.status == 200:
+                            data = json.loads(text)
+                            if "choices" not in data:
+                                print("NO CHOICES. Keys:", list(data.keys()))
+                                if "error" in data:
+                                    print("API error:", data["error"])
                                 return None
+                            choice = data["choices"][0]
+                            if "message" not in choice:
+                                print("NO MESSAGE in choice")
+                                return None
+
+                            content = choice["message"].get("content", "").strip()
+                            reasoning = choice["message"].get("reasoning_content", "").strip()
+
+                            if content:
+                                return content
+
+                            if reasoning:
+                                print("Extracting dialogue from reasoning_content")
+                                lines = reasoning.split('\n')
+                                best_line = None
+                                for line in lines:
+                                    line_stripped = line.strip()
+                                    if line_stripped.startswith('**') and '**:' in line_stripped:
+                                        lower_line = line_stripped.lower()
+                                        if not any(word in lower_line for word in ['[something', 'maybe', 'should', 'could', 'would', 'we need', 'i think', 'first,', 'let me']):
+                                            after_colon = line_stripped.split(':', 1)[1].strip() if ':' in line_stripped else ''
+                                            if not (after_colon.startswith('[') and '?' in after_colon):
+                                                best_line = line_stripped
+                                                break
+                                if best_line:
+                                    print(f"Extracted: {best_line[:100]}")
+                                    return best_line
+                                else:
+                                    print("No valid dialogue pattern found in reasoning")
+                                    return None
+                            else:
+                                print("Empty content and no reasoning")
+                                return None
+
+                        elif resp.status == 429:
+                            wait = 2 ** attempt
+                            print(f"Rate limited (429). Retrying in {wait} sec...")
+                            await asyncio.sleep(wait)
+                        elif 500 <= resp.status < 600:
+                            print(f"Server error {resp.status}. Retrying in {2**attempt} sec...")
+                            await asyncio.sleep(2 ** attempt)
                         else:
-                            print("Empty content and no reasoning")
+                            print(f"Non-200 status: {resp.status}")
+                            print("Error body:", text[:500])
                             return None
 
-                    elif resp.status == 429:
-                        print(f"Rate limited. Retrying in {2**attempt} sec...")
-                        await asyncio.sleep(2 ** attempt)
-                    else:
-                        print(f"Non-200 status: {resp.status}")
-                        return None
-        except Exception as e:
-            print(f"DeepSeek error: {repr(e)}")
-            if attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)
-            else:
-                return None
+            except asyncio.TimeoutError:
+                print(f"Request timeout (attempt {attempt+1})")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    return None
+            except aiohttp.ClientError as e:
+                print(f"HTTP client error: {repr(e)}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    return None
+            except Exception as e:
+                print(f"Unexpected error: {repr(e)}")
+                if attempt < retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    return None
+
     return None
 
 # ========================= BANTER GENERATION =========================
@@ -687,6 +719,77 @@ async def birthday_check_loop():
         if is_today_birthday(data["birthday"], now):
             await send_birthday_message(uid, data)
 
+@tasks.loop(hours=EMOJI_REFRESH_HOURS)
+async def refresh_emojis_task():
+    await bot.wait_until_ready()
+    global server_emojis
+    guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
+    if guild:
+        await guild.fetch_emojis()
+        server_emojis = guild.emojis
+        print(f"✅ Эмодзи обновлены: {len(server_emojis)} шт.")
+    else:
+        print("❌ Гильдия для эмодзи не найдена")
+
+# ========================= POST-PROCESSING =========================
+
+def clean_dialogue_line(raw: str, default_character_name: str) -> str:
+    """
+    Очищает сырую строку ответа модели и приводит к формату **Имя**: текст.
+    """
+    if not raw:
+        return raw
+
+    # 1. Удаляем английские эмоции в круглых скобках
+    raw = re.sub(r'^\s*\([^)]+\)\s*', '', raw)
+    raw = re.sub(r':\s*\([^)]+\)\s*', ': ', raw)
+    raw = re.sub(r'\s*\([^)]+\)\s*$', '', raw)
+
+    # 2. Удаляем звёздочки-эмоции
+    raw = re.sub(r'\*[^*]+\*', '', raw)
+
+    # 3. Заменяем многоточия из двух точек на три
+    raw = re.sub(r'\.{2,}', '...', raw)
+
+    # 4. Убираем лишние пробелы
+    raw = ' '.join(raw.split())
+
+    # 5. Если строка начинается с "Имя:" (латиница) – заменяем
+    if raw.lower().startswith("имя:"):
+        return f"**{default_character_name}**: {raw[4:].strip()}"
+
+    # 6. Ищем шаблон "РусскоеИмя: текст" без звёздочек
+    match = re.match(r'^([А-ЯЁ][а-яё]+):\s*(.*)', raw)
+    if match:
+        raw_name = match.group(1)
+        text = match.group(2).strip()
+        # Находим полное имя из словаря
+        full_name = raw_name
+        for char_id, char_data in AKATSUKI_MEMBERS.items():
+            if char_data['name'].lower() == raw_name.lower():
+                full_name = char_data['name']
+                break
+        return f"**{full_name}**: {text}"
+
+    # 7. Если уже в формате **Имя**: текст – оставляем
+    if re.match(r'^\*\*[^*]+\*\*:\s*.+', raw):
+        return raw
+
+    # 8. Иначе – добавляем имя первого отвечающего
+    return f"**{default_character_name}**: {raw}"
+
+def fix_truncated_line(line: str) -> str:
+    """Добавляет многоточие, если фраза явно обрывается."""
+    if not line:
+        return line
+    if re.search(r'[.!?…]\s*$', line):
+        return line
+    if len(line) > 30 and not line[-1].isalnum():
+        return line + '...'
+    if len(line) > 50:
+        return line + '...'
+    return line
+
 # ========================= MESSAGE HANDLER =========================
 
 @bot.event
@@ -779,7 +882,7 @@ async def on_message(message):
             wives_names = ', '.join([w['name'] for w in character_wives_info.get(resp_char, [])]) if character_wives_info.get(resp_char) else 'никого'
             extra_context += f"{char_name} знает, что автор сообщения НЕ является его женой. Автор — {message.author.display_name}, а жену {char_name} зовут {wives_names}.\n"
 
-    # ---- Если пользователь сам является женой кого-то (старая логика) ----
+    # ---- Если пользователь сам является женой кого-то ----
     if wife_character:
         extra_context += f"""
 Пользователь является женой:
@@ -840,6 +943,7 @@ async def on_message(message):
 
     history = conversation_history.get(message.channel.id, [])[-8:]
 
+    # ---------- ФОРМИРУЕМ USER_CONTEXT С ЭМОДЗИ ----------
     user_context = f"""
 Автор:
 {message.author.display_name}
@@ -863,6 +967,14 @@ async def on_message(message):
 - не ломай формат
 """
 
+    # Добавляем информацию о доступных кастомных эмодзи
+    if server_emojis:
+        # Берём первые 30, чтобы не перегружать контекст
+        emojis_list = [str(e) for e in server_emojis[:30]]
+        user_context += f"\n\nДоступные эмодзи: {', '.join(emojis_list)}."
+        user_context += " Ты МОЖЕШЬ ИНОГДА добавлять в конец своего сообщения НЕ БОЛЕЕ ОДНОГО подходящего по смыслу эмодзи из этого списка."
+        user_context += " Если отвечают несколько персонажей, каждый может добавить один эмодзи в конец своей реплики. Не используй эмодзи в каждом ответе, только когда это уместно (для выражения эмоции или усиления фразы)."
+
     prompt = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_context}]
 
     # ========================= SEND =========================
@@ -872,38 +984,63 @@ async def on_message(message):
     async with message.channel.typing():
         reply = await ask_deepseek(prompt)
 
-    print("REPLY:", reply)
+    print("RAW REPLY:", reply)
 
     if not reply:
         await message.reply(f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: Тц. Связь сдохла.", mention_author=False)
         return
 
-    clean_reply = reply.strip()
-    if clean_reply and not clean_reply.endswith((".", "!", "?", "…")):
-        clean_reply += "..."
+    # ========================= ПОСТ-ОБРАБОТКА =========================
+    cleaned = clean_dialogue_line(reply, AKATSUKI_MEMBERS[responders[0]]['name'])
+    cleaned = fix_truncated_line(cleaned)
 
-    if not clean_reply.startswith("**"):
-        clean_reply = f"**{AKATSUKI_MEMBERS[responders[0]]['name']}**: {clean_reply}"
+    print("CLEANED REPLY:", cleaned)
 
+    # ========================= ОТПРАВКА =========================
     try:
-        await message.reply(clean_reply, mention_author=False)
+        await message.reply(cleaned, mention_author=False)
     except Exception as e:
         print("SEND ERROR:", e)
-        await message.channel.send(clean_reply)
+        await message.channel.send(cleaned)
 
-    add_to_history(message.channel.id, "assistant", clean_reply)
+    add_to_history(message.channel.id, "assistant", cleaned)
     await bot.process_commands(message)
+
+# ========================= КОМАНДЫ =========================
+
+@bot.command(name='обновить_эмодзи')
+async def manual_refresh_emojis(ctx):
+    global server_emojis
+    guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
+    if not guild:
+        await ctx.send("❌ Сервер с эмодзи не найден.")
+        return
+    await guild.fetch_emojis()
+    server_emojis = guild.emojis
+    await ctx.send(f"✅ Загружено {len(server_emojis)} кастомных эмодзи.")
 
 # ========================= READY EVENT =========================
 
 @bot.event
 async def on_ready():
+    global server_emojis
     print(f"✅ Акацуки бот запущен: {bot.user}")
     print(f"🕒 Moscow time: {now_msk().strftime('%H:%M')}")
+    # Загружаем эмодзи
+    guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
+    if guild:
+        await guild.fetch_emojis()
+        server_emojis = guild.emojis
+        print(f"✅ Загружено {len(server_emojis)} кастомных эмодзи.")
+    else:
+        print("❌ Гильдия для эмодзи не найдена. Проверьте GUILD_ID_FOR_EMOJIS")
+    # Запускаем задачи
     if not random_banter_loop.is_running():
         random_banter_loop.start()
     if not birthday_check_loop.is_running():
         birthday_check_loop.start()
+    if not refresh_emojis_task.is_running():
+        refresh_emojis_task.start()
 
 # ========================= CLEANUP + MAIN =========================
 
