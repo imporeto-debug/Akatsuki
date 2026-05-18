@@ -365,7 +365,7 @@ intents.messages = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 conversation_history = {}
-http_session = None   # <--- глобальная сессия для переиспользования
+http_session = None
 server_emojis = []
 
 # ========================= GLOBAL REQUEST QUEUE =========================
@@ -474,19 +474,15 @@ def build_character_prompt(characters):
 def format_character_names(characters):
     return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
 
-# ========================= DEEPSEEK API (с переиспользованием сессии и логированием времени) =========================
+# ========================= DEEPSEEK API (с переиспользованием сессии) =========================
 
 def extract_dialogue_from_reasoning(text: str) -> str:
-    """Извлекает из reasoning первую строку, которая похожа на реплику персонажа."""
     lines = text.split('\n')
     for line in lines:
         line = line.strip()
-        # Ищем **Имя**: текст
         if line.startswith('**') and '**:' in line:
-            # Дополнительно проверяем, что после ** не идёт мусор типа "We need"
             if not any(word in line.lower() for word in ['we need', 'i think', 'maybe', 'should']):
                 return line
-        # Ищем Имя: текст без звёздочек
         if re.match(r'^[А-ЯЁ][а-яё]+:', line):
             return line
     return None
@@ -510,7 +506,6 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
             await asyncio.sleep(wait_time)
         last_request_time = asyncio.get_event_loop().time()
 
-        # --- СОЗДАЁМ ГЛОБАЛЬНУЮ HTTP-СЕССИЮ ПРИ ПЕРВОМ ВЫЗОВЕ ---
         if http_session is None or http_session.closed:
             timeout = aiohttp.ClientTimeout(total=120)
             http_session = aiohttp.ClientSession(
@@ -529,7 +524,7 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                 "stream": False,
             }
             try:
-                start_time = asyncio.get_event_loop().time()   # ---- НАЧАЛО ЗАМЕРА ----
+                start_time = asyncio.get_event_loop().time()
                 async with http_session.post(url, headers=headers, json=payload) as resp:
                     elapsed = asyncio.get_event_loop().time() - start_time
                     print(f"⏱️ DeepSeek запрос занял {elapsed:.2f}с (попытка {attempt+1})")
@@ -571,7 +566,6 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
 # ========================= POST-PROCESSING =========================
 
 def fix_bad_format(text: str, default_name: str) -> str:
-    """Исправляет **: и **Имя** без двоеточия."""
     if not text:
         return text
     if text.startswith('**:'):
@@ -725,6 +719,17 @@ async def on_message(message):
             break
     is_wife = len(user_husbands) > 0
 
+    # ========== ОПРЕДЕЛЕНИЕ ПОЛА АВТОРА (ВСЕ УЧАСТНИЦЫ — ДЕВУШКИ) ==========
+    # Если автор не является женой персонажа (т.е. обычная участница), 
+    # то явно указываем, что автор — женщина.
+    # Для жен персонажей пол уже определён как женский.
+    if not is_wife and wife_character is None:
+        author_gender = "женщина"
+        author_gender_context = "Автор — женщина. Обращайся к ней в женском роде."
+    else:
+        author_gender = "женщина"  # жёны персонажей — тоже женщины
+        author_gender_context = "Автор — жена персонажа. Обращайся к ней в женском роде."
+
     if wife_character:
         responder = wife_character
         interrupted = False
@@ -756,18 +761,21 @@ async def on_message(message):
     if extra_context:
         extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
-    # ---- Кем является автор ----
+    # ---- Кем является автор с учётом пола ----
     for resp_char in responders:
         char_name = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
             extra_context += f"{char_name} знает — автор его жена.\n"
         else:
-            extra_context += f"{char_name} знает — автор НЕ его жена.\n"
+            # Для всех остальных участниц — явно женщина
+            extra_context += f"{char_name} знает — автор — женщина, НЕ его жена.\n"
 
     if wife_character:
         extra_context += f"Пользователь — жена {AKATSUKI_MEMBERS[wife_character]['name']}. Относись соответственно.\n"
     elif is_wife:
         extra_context += f"Пользователь — жена {format_character_names(user_husbands)}.\n"
+    else:
+        extra_context += author_gender_context + "\n"
 
     if interrupted and original_target:
         extra_context += f"{AKATSUKI_MEMBERS[responder]['name']} отвечает вместо {AKATSUKI_MEMBERS[original_target]['name']}\n"
@@ -778,6 +786,7 @@ async def on_message(message):
     history = conversation_history.get(message.channel.id, [])[-8:]
 
     user_context = f"""Автор: {message.author.display_name}
+Пол автора: {author_gender}
 Сообщение: {message.content}
 Отвечают: {format_character_names(responders)}
 {extra_context}
