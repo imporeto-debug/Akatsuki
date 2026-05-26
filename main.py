@@ -16,7 +16,7 @@ if not DISCORD_TOKEN or not DEEPSEEK_API_KEY:
 MSK = ZoneInfo("Europe/Moscow")
 
 MAX_RESPONSE_TOKENS    = 2500
-MAX_HISTORY_MESSAGES   = 15
+MAX_HISTORY_MESSAGES   = 40
 
 # ========================= CHANNELS =========================
 
