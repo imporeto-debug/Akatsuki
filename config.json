@@ -28,5 +28,25 @@
   "deepseek": {
     "url": "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions",
     "model": "deepseek-v4-pro"
+  },
+  "holidays": {
+    "enabled": true,
+    "list": [
+      {"name": "Новый год", "month": 1, "day": 1},
+      {"name": "14 февраля", "month": 2, "day": 14},
+      {"name": "23 февраля", "month": 2, "day": 23},
+      {"name": "8 марта", "month": 3, "day": 8},
+      {"name": "1 апреля", "month": 4, "day": 1},
+      {"name": "1 мая", "month": 5, "day": 1},
+      {"name": "9 мая", "month": 5, "day": 9},
+      {"name": "12 июня", "month": 6, "day": 12},
+      {"name": "4 ноября", "month": 11, "day": 4},
+      {"name": "31 декабря", "month": 12, "day": 31}
+    ]
+  },
+  "random_holidays": {
+    "enabled": true,
+    "days_per_week": 2,
+    "commentary_chance_if_no_holiday": 0.2
   }
 }
