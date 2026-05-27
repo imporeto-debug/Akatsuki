@@ -1,0 +1,31 @@
+{
+  "discord": {
+    "main_channel_id": 1504826436085616670,
+    "guild_id_for_emojis": 1498663459355754526,
+    "memory_channels": [1504826436085616670]
+  },
+  "response": {
+    "response_chance": 15,
+    "max_response_tokens": 2500,
+    "max_history_messages": 40,
+    "request_delay": 13
+  },
+  "multi_character": {
+    "max_multi_reply_characters": 3,
+    "multi_reply_chance": 38,
+    "random_intrusion_chance": 25,
+    "partner_join_chance": 40
+  },
+  "emojis": {
+    "refresh_hours": 168
+  },
+  "banter": {
+    "seed_skip_chance": 30,
+    "seeds_file": "banter_seeds.json"
+  },
+  "users_file": "users.json",
+  "deepseek": {
+    "url": "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions",
+    "model": "deepseek-v4-pro"
+  }
+}
