@@ -24,6 +24,7 @@
     "seeds_file": "banter_seeds.json"
   },
   "users_file": "users.json",
+  "character_prompts_file": "character_prompts.json",
   "deepseek": {
     "url": "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions",
     "model": "deepseek-v4-pro"
