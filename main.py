@@ -748,7 +748,7 @@ async def on_message(message):
             {"role": "user", "content": "Расскажи анекдот."}
         ]
         async with message.channel.typing():
-            reply = await ask_deepseek(joke_prompt, max_tokens=2500, temperature=1.0, skip_validation=True)
+            reply = await ask_deepseek(joke_prompt, max_tokens=3500, temperature=1.0, skip_validation=True)
         if reply:
             reply = strip_reasoning(reply)
             if reply:
