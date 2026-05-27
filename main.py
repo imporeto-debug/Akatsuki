@@ -5,7 +5,21 @@ from zoneinfo import ZoneInfo
 import asyncio, aiohttp, discord
 from discord.ext import commands, tasks
 
-# ========================= CONFIG =========================
+# ========================= ЗАГРУЗКА КОНФИГУРАЦИИ =========================
+
+CONFIG_FILE = "config.json"
+
+def load_config():
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"❌ Ошибка загрузки {CONFIG_FILE}: {e}")
+        raise RuntimeError("Не удалось загрузить конфигурацию")
+
+CONFIG = load_config()
+
+# ========================= ОСНОВНЫЕ ПАРАМЕТРЫ =========================
 
 DISCORD_TOKEN    = os.getenv("DISCORD_TOKEN")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
@@ -15,28 +29,30 @@ if not DISCORD_TOKEN or not DEEPSEEK_API_KEY:
 
 MSK = ZoneInfo("Europe/Moscow")
 
-MAX_RESPONSE_TOKENS    = 2500
-MAX_HISTORY_MESSAGES   = 40
+MAX_RESPONSE_TOKENS   = CONFIG["response"]["max_response_tokens"]
+MAX_HISTORY_MESSAGES  = CONFIG["response"]["max_history_messages"]
+RESPONSE_CHANCE       = CONFIG["response"]["response_chance"]
+REQUEST_DELAY         = CONFIG["response"]["request_delay"]
 
-# ========================= CHANNELS =========================
+MAIN_CHANNEL_ID       = CONFIG["discord"]["main_channel_id"]
+GUILD_ID_FOR_EMOJIS   = CONFIG["discord"]["guild_id_for_emojis"]
+MEMORY_CHANNELS       = CONFIG["discord"]["memory_channels"]
 
-MAIN_CHANNEL_ID    = 1504826436085616670
-GUILD_ID_FOR_EMOJIS = 1498663459355754526
-MEMORY_CHANNELS    = [1504826436085616670]
+MAX_MULTI_REPLY_CHARACTERS = CONFIG["multi_character"]["max_multi_reply_characters"]
+MULTI_REPLY_CHANCE         = CONFIG["multi_character"]["multi_reply_chance"]
+RANDOM_INTRUSION_CHANCE    = CONFIG["multi_character"]["random_intrusion_chance"]
+PARTNER_JOIN_CHANCE        = CONFIG["multi_character"]["partner_join_chance"]
 
-response_chance = 15
+EMOJI_REFRESH_HOURS = CONFIG["emojis"]["refresh_hours"]
 
-# ========================= MULTI CHARACTER SETTINGS =========================
+SEED_SKIP_CHANCE    = CONFIG["banter"]["seed_skip_chance"]
+SEEDS_FILE          = CONFIG["banter"]["seeds_file"]
+USERS_FILE          = CONFIG.get("users_file", "users.json")
+CHARACTER_PROMPTS_FILE = CONFIG.get("character_prompts_file", "character_prompts.json")
+DEEPSEEK_URL        = CONFIG["deepseek"]["url"]
+DEEPSEEK_MODEL      = CONFIG["deepseek"]["model"]
 
-MAX_MULTI_REPLY_CHARACTERS = 3
-MULTI_REPLY_CHANCE         = 38
-RANDOM_INTRUSION_CHANCE    = 25
-PARTNER_JOIN_CHANCE        = 40
-
-# ========================= EMOJI REFRESH =========================
-EMOJI_REFRESH_HOURS = 168
-
-# ========================= CHARACTERS =========================
+# ========================= CHARACTERS (статичные) =========================
 
 AKATSUKI_MEMBERS = {
     "itachi": {
@@ -116,217 +132,41 @@ STRICTLY FORBIDDEN:
 - Never say "рассказываю анекдот", "шутка такая" — just tell the joke.
 """
 
-# ========================= CHARACTER PROMPTS =========================
+# ========================= CHARACTER PROMPTS (из файла) =========================
 
-CHARACTER_PROMPTS = {
+CHARACTER_PROMPTS = {}
 
-    "itachi": """
-You are Itachi Uchiha.
-
-Personality:
-- Extremely calm and emotionally restrained
-- Speaks rarely, only when necessary
-- Observes everything and notices details others miss
-- Cold, distant, but intelligent and precise
-- Uses silence as pressure
-- Subtle, dry sarcasm when provoked
-
-Behavior rules:
-- Never explains yourself fully
-- Never shows strong emotions openly
-- If irritated → becomes even quieter
-- If someone is loud → responds shorter and colder
-- Can shut down conversations with one sentence
-- Protective of Kisame in a subtle way
-
-Speech style:
-- Very short sentences
-- Minimal words
-- No emotional exaggeration
-- Controlled tone even in conflict
-""",
-
-    "kisame": """
-You are Kisame Hoshigaki.
-
-Personality:
-- Loud, relaxed, and confident
-- Rough humor, often mocking others
-- Loyal to Itachi above all
-- Enjoys intimidation and dominance
-- Treats fights and violence casually
-
-Behavior rules:
-- Frequently jokes or mocks others
-- Can escalate arguments for fun
-- Becomes serious only in combat or loyalty situations
-- Often drags conversations into aggression or sarcasm
-- Respects Itachi deeply and follows his lead
-
-Speech style:
-- Medium to long sentences
-- Rough tone, sometimes playful aggression
-- Direct and blunt language
-""",
-
-    "deidara": """
-You are Deidara — explosive artist of the Akatsuki, emotional and dramatic.
-
-Personality:
-- Obsessed with art (mostly explosions), but can appreciate others' impressive techniques
-- Easily offended by criticism → threatens to blow things up or rants
-- Gets bored quickly, hates long talks, money talk, planning
-- Impulsive, naive about sarcasm, sometimes childish (whining, bragging)
-- Competitive with Sasori, but may admit puppets have some beauty
-
-Behavior:
-- When bored: suggests blowing something up or interrupts with "Слушай!"
-- When praised: becomes boastful, offers a "demonstration"
-- Complains about mundane things: rain, uniforms, wet clay
-- Short attention span — fidgets, yawns during long explanations
-
-Speech style:
-- Fast, chaotic, exclaims often
-- Uses filler sounds: "мм", "хм", "ун", "кхм"
-- Interrupts others, switches quickly from playful to angry
-""",
-
-    "sasori": """
-You are Sasori.
-
-Personality:
-- Cold, detached, emotionally flat
-- Sees emotions as weakness
-- Extremely sarcastic and dismissive
-- Dislikes unnecessary noise (especially Deidara)
-- Focused on control and perfection
-
-Behavior rules:
-- Constantly criticizes Deidara
-- Rarely shows emotion
-- Speaks only when necessary
-- Prefers silence or short dismissive replies
-- Views others as childish or inefficient
-
-Speech style:
-- Short, cutting sentences
-- Dry sarcasm
-- Emotionally flat tone
-""",
-
-    "hidan": """
-You are Hidan.
-
-Personality:
-- Extremely aggressive and loud
-- Constant swearing and insults
-- Violent, chaotic energy
-- Religious fanatic (Jashin)
-- Enjoys provoking others
-
-Behavior rules:
-- Escalates arguments immediately
-- Laughs at pain and chaos
-- Never backs down in conflict
-- Provokes Kakuzu constantly
-- Can become hysterical during debates
-
-Speech style:
-- Loud, chaotic, emotional
-- Heavy swearing
-- Rapid escalation in tone
-""",
-
-    "kakuzu": """
-You are Kakuzu.
-
-Personality:
-- Greedy, money-obsessed
-- Always irritated by others
-- Pragmatic and calculating
-- Old, tired of nonsense around him
-- Hates wasting time or resources
-
-Behavior rules:
-- Constantly complains about money
-- Threatens Hidan when provoked
-- Refuses emotional discussions
-- Focused only on profit and survival
-- Cold and practical in all situations
-
-Speech style:
-- Dry, annoyed tone
-- Short or blunt sentences
-- Occasionally threatening
-""",
-
-    "sasuke": """
-You are Sasuke Uchiha — survivor of the clan massacre, obsessed with revenge, cold and emotionally distant.
-
-Personality:
-- Brooding, rarely speaks, easily irritated by weakness or noise
-- Distrustful, keeps everyone at a distance
-- Proud of being Uchiha, but hates reminders of Itachi (unless he brings it up)
-
-Behavior:
-- Never starts conversations. Replies with 2–5 words.
-- Ignores most provocations. Sharp retort only if insulted directly.
-- Ends dialogues with "..." or "Хватит."
-- Shows emotion (anger/contempt) only when clan or strength is mocked.
-
-Speech style:
-- Minimal words, monotone, often ends with "..."
-- No filler words, no jokes, no elaboration.
-""",
-}
-
-# ========================= INTERRUPTS =========================
-
-PARTNER_INTERRUPTS = {
-    ("kisame", "itachi"): [
-        "Итачи опять игнорирует всех.",
-        "Он молчит как обычно."
-    ],
-    ("itachi", "kisame"): [
-        "Кисаме куда-то ушёл.",
-        "Он занят Самехадой."
-    ],
-    ("sasori", "deidara"): [
-        "Дейдара снова что-то взорвал.",
-        "У Сасори заканчивается терпение."
-    ],
-    ("deidara", "sasori"): [
-        "Сасори сидит со своими куклами.",
-        "Дейдара опять орёт."
-    ],
-    ("hidan", "kakuzu"): [
-        "Хидан бесится.",
-        "Какузу считает деньги."
-    ],
-    ("kakuzu", "hidan"): [
-        "Какузу устал от Хидана.",
-        "Хидан шумит рядом."
-    ],
-}
+def load_character_prompts():
+    global CHARACTER_PROMPTS
+    try:
+        with open(CHARACTER_PROMPTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and data:
+                CHARACTER_PROMPTS = data
+                print(f"✅ Загружены промпты для {len(CHARACTER_PROMPTS)} персонажей из {CHARACTER_PROMPTS_FILE}")
+                return
+    except Exception as e:
+        print(f"❌ Ошибка загрузки {CHARACTER_PROMPTS_FILE}: {e}")
+    # fallback (заглушки)
+    for cid in AKATSUKI_MEMBERS:
+        CHARACTER_PROMPTS[cid] = f"Ты {AKATSUKI_MEMBERS[cid]['name']}. Отвечай кратко в характере."
 
 # ========================= BANTER SEEDS (из файла) =========================
 
-BANTER_SEEDS_FILE = "banter_seeds.json"
 BANTER_SEEDS = []
-SEED_SKIP_CHANCE = 30  # 30% шанс, что затравка не передаётся
 
 def load_banter_seeds():
     global BANTER_SEEDS
     try:
-        with open(BANTER_SEEDS_FILE, "r", encoding="utf-8") as f:
+        with open(SEEDS_FILE, "r", encoding="utf-8") as f:
             seeds = json.load(f)
             if isinstance(seeds, list) and seeds:
                 random.shuffle(seeds)
                 BANTER_SEEDS = seeds
-                print(f"✅ Загружено {len(BANTER_SEEDS)} затравок, порядок перемешан")
+                print(f"✅ Загружено {len(BANTER_SEEDS)} затравок из {SEEDS_FILE}, порядок перемешан")
                 return
     except Exception as e:
-        print(f"❌ Ошибка загрузки {BANTER_SEEDS_FILE}: {e}")
+        print(f"❌ Ошибка загрузки {SEEDS_FILE}: {e}")
     # fallback
     BANTER_SEEDS = ["Кто-то разрушил базу.", "Жалобы на миссию.", "Спор об искусстве."]
     random.shuffle(BANTER_SEEDS)
@@ -336,11 +176,11 @@ def get_banter_seed():
         return None
     return random.choice(BANTER_SEEDS)
 
-# ========================= USERS =========================
+# ========================= ЗАГРУЗКА ПОЛЬЗОВАТЕЛЕЙ (жёны) =========================
 
 def load_users():
     try:
-        with open("users.json", "r", encoding="utf-8") as f:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
         return {}
@@ -387,17 +227,11 @@ conversation_history = {}
 http_session = None
 server_emojis = []
 
-# ========================= GLOBAL REQUEST QUEUE =========================
 request_semaphore = asyncio.Semaphore(1)
 last_request_time = 0
-request_delay = 13
-
-# ========================= TIME =========================
 
 def now_msk():
     return datetime.now(MSK)
-
-# ========================= HISTORY =========================
 
 def add_to_history(channel_id, role, content):
     if channel_id not in MEMORY_CHANNELS:
@@ -408,8 +242,6 @@ def add_to_history(channel_id, role, content):
     if len(conversation_history[channel_id]) > MAX_HISTORY_MESSAGES:
         conversation_history[channel_id] = conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
 
-# ========================= CHARACTER DETECTION =========================
-
 def detect_character(text: str):
     text = text.lower()
     for key, data in AKATSUKI_MEMBERS.items():
@@ -417,8 +249,6 @@ def detect_character(text: str):
             if re.search(rf"\b{re.escape(alias.lower())}\b", text):
                 return key
     return None
-
-# ========================= FIND USER HUSBANDS =========================
 
 def detect_user_husbands(uid):
     uid = str(uid)
@@ -445,8 +275,6 @@ def detect_user_husbands(uid):
         husbands.append("sasuke")
     return husbands
 
-# ========================= MULTI CHARACTER LOGIC =========================
-
 def build_multi_character_list(main_character):
     characters = [main_character]
     partner = AKATSUKI_MEMBERS[main_character]["partner"]
@@ -458,8 +286,6 @@ def build_multi_character_list(main_character):
             characters.append(random.choice(available))
     return characters
 
-# ========================= CHOOSE RESPONDER =========================
-
 def choose_responder(message_text):
     target = detect_character(message_text)
     if target:
@@ -468,8 +294,6 @@ def choose_responder(message_text):
             return partner, True, target
         return target, False, None
     return random.choice(list(AKATSUKI_MEMBERS.keys())), False, None
-
-# ========================= REACTIONS =========================
 
 async def add_character_reaction(message, character):
     try:
@@ -482,11 +306,9 @@ async def add_multi_reactions(message, characters):
         if random.random() < 0.45:
             await add_character_reaction(message, character)
 
-# ========================= PROMPT HELPERS =========================
-
 def build_character_prompt(characters):
     return "\n".join(
-        f"========================\nCHARACTER:\n{AKATSUKI_MEMBERS[c]['name']}\n{CHARACTER_PROMPTS[c]}"
+        f"========================\nCHARACTER:\n{AKATSUKI_MEMBERS[c]['name']}\n{CHARACTER_PROMPTS.get(c, '')}"
         for c in characters
     )
 
@@ -524,7 +346,6 @@ def is_valid_dialogue(text: str) -> bool:
 
 async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3):
     global last_request_time, http_session
-    url = "https://addresses-amended-mind-citysearch.trycloudflare.com/proxy/deepseek/chat/completions"
 
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -535,7 +356,7 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
 
     async with request_semaphore:
         now = asyncio.get_event_loop().time()
-        wait_time = last_request_time + request_delay - now
+        wait_time = last_request_time + REQUEST_DELAY - now
         if wait_time > 0:
             print(f"Queue: waiting {wait_time:.2f}s")
             await asyncio.sleep(wait_time)
@@ -551,7 +372,7 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
         for attempt in range(retries):
             current_temp = temperature if attempt == 0 else 0.7
             payload = {
-                "model": "deepseek-v4-pro",
+                "model": DEEPSEEK_MODEL,
                 "messages": messages,
                 "temperature": current_temp,
                 "top_p": 0.9,
@@ -560,7 +381,7 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
             }
             try:
                 start_time = asyncio.get_event_loop().time()
-                async with http_session.post(url, headers=headers, json=payload) as resp:
+                async with http_session.post(DEEPSEEK_URL, headers=headers, json=payload) as resp:
                     elapsed = asyncio.get_event_loop().time() - start_time
                     print(f"⏱️ DeepSeek запрос занял {elapsed:.2f}с (попытка {attempt+1})")
 
@@ -754,6 +575,11 @@ async def reshuffle_seeds(ctx):
     random.shuffle(BANTER_SEEDS)
     await ctx.send(f"✅ Список затравок перемешан. Всего {len(BANTER_SEEDS)}.")
 
+@bot.command(name='перезагрузить_промпты')
+async def reload_prompts(ctx):
+    load_character_prompts()
+    await ctx.send(f"✅ Промпты перезагружены. Загружено {len(CHARACTER_PROMPTS)} персонажей.")
+
 # ========================= MESSAGE HANDLER =========================
 
 @bot.event
@@ -773,7 +599,7 @@ async def on_message(message):
         random_char = random.choice(list(AKATSUKI_MEMBERS.keys()))
         char_name = AKATSUKI_MEMBERS[random_char]["name"]
         joke_prompt = [
-            {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + CHARACTER_PROMPTS[random_char] + "\nВАЖНО: Никаких рассуждений. Только анекдот. Не используй слова 'автор', 'авторша', 'пользователь', 'пользовательница'."},
+            {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + CHARACTER_PROMPTS.get(random_char, "") + "\nВАЖНО: Никаких рассуждений. Только анекдот. Не используй слова 'автор', 'авторша', 'пользователь', 'пользовательница'."},
             {"role": "user", "content": f"Расскажи короткий смешной анекдот от лица {char_name}. Формат: **{char_name}**: текст анекдота. Без комментариев, без 'рассказываю анекдот'. Просто анекдот."}
         ]
         async with message.channel.typing():
@@ -792,7 +618,7 @@ async def on_message(message):
                       message.reference.resolved.author.id == bot.user.id)
     has_name = detect_character(message.content)
 
-    reply_needed = (mentioned or replied_to_bot or has_name or random.randint(1, 100) <= response_chance)
+    reply_needed = (mentioned or replied_to_bot or has_name or random.randint(1, 100) <= RESPONSE_CHANCE)
     if not reply_needed:
         await bot.process_commands(message)
         return
@@ -901,7 +727,8 @@ async def on_message(message):
 @bot.event
 async def on_ready():
     global server_emojis
-    load_banter_seeds()  # загружаем затравки при запуске
+    load_character_prompts()
+    load_banter_seeds()
     print(f"✅ Акацуки бот запущен: {bot.user}")
     print(f"🕒 Moscow time: {now_msk().strftime('%H:%M')}")
     guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
