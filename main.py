@@ -1,5 +1,5 @@
 import os, re, json, random
-from datetime import datetime, date
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import asyncio, aiohttp, discord
@@ -157,7 +157,6 @@ def load_character_prompts():
                 return
     except Exception as e:
         print(f"❌ Ошибка загрузки {CHARACTER_PROMPTS_FILE}: {e}")
-    # fallback
     for cid in AKATSUKI_MEMBERS:
         CHARACTER_PROMPTS[cid] = f"Ты {AKATSUKI_MEMBERS[cid]['name']}. Отвечай кратко в характере."
 
@@ -353,7 +352,7 @@ def is_valid_dialogue(text: str) -> bool:
         return False
     return True
 
-async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3):
+async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3, skip_validation=False):
     global last_request_time, http_session
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -365,11 +364,14 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
         now = asyncio.get_event_loop().time()
         wait_time = last_request_time + REQUEST_DELAY - now
         if wait_time > 0:
+            print(f"Queue: waiting {wait_time:.2f}s")
             await asyncio.sleep(wait_time)
         last_request_time = asyncio.get_event_loop().time()
+
         if http_session is None or http_session.closed:
             timeout = aiohttp.ClientTimeout(total=120)
             http_session = aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(limit=1))
+
         for attempt in range(retries):
             current_temp = temperature if attempt == 0 else 0.7
             payload = {
@@ -386,6 +388,9 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                     elapsed = asyncio.get_event_loop().time() - start_time
                     print(f"⏱️ DeepSeek запрос занял {elapsed:.2f}с (попытка {attempt+1})")
                     text = await resp.text()
+                    print(f"STATUS (attempt {attempt+1}):", resp.status)
+                    print("RAW TEXT:", text[:500])
+
                     if resp.status == 200:
                         data = json.loads(text)
                         if "choices" not in data:
@@ -393,66 +398,29 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                         choice = data["choices"][0]
                         if "message" not in choice:
                             continue
+
                         content = choice["message"].get("content", "").strip()
-                        if content and is_valid_dialogue(content):
-                            return content
+                        if content:
+                            if skip_validation:
+                                return content
+                            if is_valid_dialogue(content):
+                                return content
+
                         reasoning = choice["message"].get("reasoning_content", "").strip()
                         if reasoning:
                             dialogue = extract_dialogue_from_reasoning(reasoning)
-                            if dialogue and is_valid_dialogue(dialogue):
-                                return dialogue
-                            print("No valid dialogue in reasoning, retrying")
+                            if dialogue:
+                                if skip_validation:
+                                    return dialogue
+                                if is_valid_dialogue(dialogue):
+                                    return dialogue
                     elif resp.status == 429:
+                        print(f"Rate limit, retrying in {2**attempt}s")
                         await asyncio.sleep(2 ** attempt)
                     else:
                         print(f"Non-200 status: {resp.status}")
             except Exception as e:
                 print(f"Error: {e}")
-            if attempt < retries - 1:
-                await asyncio.sleep(2 ** attempt)
-    return None
-
-# ========== УПРОЩЁННАЯ ФУНКЦИЯ ДЛЯ АНЕКДОТОВ (СВОБОДНЫЙ ФОРМАТ) ==========
-async def ask_deepseek_simple(messages, max_tokens=400, temperature=0.9, retries=2):
-    """Упрощённый вызов DeepSeek без проверки формата диалога, возвращает любой текст."""
-    global last_request_time, http_session
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
-    async with request_semaphore:
-        now = asyncio.get_event_loop().time()
-        wait_time = last_request_time + REQUEST_DELAY - now
-        if wait_time > 0:
-            await asyncio.sleep(wait_time)
-        last_request_time = asyncio.get_event_loop().time()
-        if http_session is None or http_session.closed:
-            timeout = aiohttp.ClientTimeout(total=120)
-            http_session = aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(limit=1))
-        for attempt in range(retries):
-            payload = {
-                "model": DEEPSEEK_MODEL,
-                "messages": messages,
-                "temperature": temperature if attempt == 0 else 0.7,
-                "max_tokens": max_tokens,
-                "stream": False,
-            }
-            try:
-                async with http_session.post(DEEPSEEK_URL, headers=headers, json=payload) as resp:
-                    if resp.status == 200:
-                        data = json.loads(await resp.text())
-                        if "choices" in data and data["choices"]:
-                            content = data["choices"][0].get("message", {}).get("content", "").strip()
-                            if content:
-                                return content
-                    elif resp.status == 429:
-                        await asyncio.sleep(2 ** attempt)
-                    else:
-                        print(f"Simple API status: {resp.status}")
-            except Exception as e:
-                print(f"Simple API error: {e}")
             if attempt < retries - 1:
                 await asyncio.sleep(2 ** attempt)
     return None
@@ -539,7 +507,7 @@ async def search_holidays_online():
         {"role": "system", "content": "Ты — помощник. Найди ВСЕ праздники сегодня. Верни ТОЛЬКО список названий, по одному в строке. На русском. Без слов 'автор'."},
         {"role": "user", "content": f"Какие праздники сегодня, {today_str}? Используй поиск."}
     ]
-    response = await ask_deepseek_simple(prompt, max_tokens=500, temperature=0.7)
+    response = await ask_deepseek(prompt, max_tokens=500, temperature=0.7, skip_validation=True)
     if not response:
         return []
     lines = [line.strip() for line in response.split('\n') if line.strip()]
@@ -712,7 +680,7 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # ========== АНЕКДОТ (СВОБОДНЫЙ ФОРМАТ) ==========
+    # ========== АНЕКДОТ ==========
     joke_keywords = ["анекдот", "расскажи анекдот", "пошути", "смешное", "забавное"]
     if any(kw in message.content.lower() for kw in joke_keywords):
         random_char = random.choice(list(AKATSUKI_MEMBERS.keys()))
@@ -722,9 +690,8 @@ async def on_message(message):
             {"role": "user", "content": "Расскажи анекдот."}
         ]
         async with message.channel.typing():
-            reply = await ask_deepseek_simple(joke_prompt, max_tokens=400, temperature=0.9)
+            reply = await ask_deepseek(joke_prompt, max_tokens=400, temperature=0.9, skip_validation=True)
         if reply:
-            # Убираем возможное имя в начале
             reply_clean = re.sub(rf'^\**{re.escape(char_name)}\**\s*[:：]\s*', '', reply.strip(), flags=re.IGNORECASE)
             reply_clean = reply_clean.strip()
             if reply_clean:
@@ -732,7 +699,16 @@ async def on_message(message):
             else:
                 await message.reply(f"**{char_name}**: {reply}", mention_author=False)
         else:
-            await message.reply(f"**{char_name}**: Хм, память взорвалась... Не могу вспомнить анекдот.", mention_author=False)
+            # Вторая попытка без указания персонажа
+            joke_prompt2 = [
+                {"role": "system", "content": "Расскажи короткий смешной анекдот. Только анекдот, без лишних слов."},
+                {"role": "user", "content": "Анекдот."}
+            ]
+            reply2 = await ask_deepseek(joke_prompt2, max_tokens=400, temperature=0.9, skip_validation=True)
+            if reply2:
+                await message.reply(f"**{char_name}**: {reply2}", mention_author=False)
+            else:
+                await message.reply(f"**{char_name}**: Хм, память взорвалась... Не могу вспомнить анекдот.", mention_author=False)
         await bot.process_commands(message)
         return
 
