@@ -1,5 +1,5 @@
 import os, re, json, random
-from datetime import datetime
+from datetime import datetime, date
 from zoneinfo import ZoneInfo
 
 import asyncio, aiohttp, discord
@@ -51,6 +51,18 @@ USERS_FILE          = CONFIG.get("users_file", "users.json")
 CHARACTER_PROMPTS_FILE = CONFIG.get("character_prompts_file", "character_prompts.json")
 DEEPSEEK_URL        = CONFIG["deepseek"]["url"]
 DEEPSEEK_MODEL      = CONFIG["deepseek"]["model"]
+
+# Фиксированные праздники из конфига
+HOLIDAYS_ENABLED = CONFIG.get("holidays", {}).get("enabled", True)
+HOLIDAYS_LIST = CONFIG.get("holidays", {}).get("list", [])
+
+# Случайные праздники
+RANDOM_HOLIDAYS_ENABLED = CONFIG.get("random_holidays", {}).get("enabled", True)
+RANDOM_HOLIDAYS_DAYS_PER_WEEK = CONFIG.get("random_holidays", {}).get("days_per_week", 2)
+RANDOM_HOLIDAYS_COMMENT_CHANCE = CONFIG.get("random_holidays", {}).get("commentary_chance_if_no_holiday", 0.2)
+
+random_holiday_weekdays = []   # будет заполнено случайными днями недели
+last_random_holiday_date = None
 
 # ========================= CHARACTERS (статичные) =========================
 
@@ -147,7 +159,7 @@ def load_character_prompts():
                 return
     except Exception as e:
         print(f"❌ Ошибка загрузки {CHARACTER_PROMPTS_FILE}: {e}")
-    # fallback (заглушки)
+    # fallback
     for cid in AKATSUKI_MEMBERS:
         CHARACTER_PROMPTS[cid] = f"Ты {AKATSUKI_MEMBERS[cid]['name']}. Отвечай кратко в характере."
 
@@ -167,7 +179,6 @@ def load_banter_seeds():
                 return
     except Exception as e:
         print(f"❌ Ошибка загрузки {SEEDS_FILE}: {e}")
-    # fallback
     BANTER_SEEDS = ["Кто-то разрушил базу.", "Жалобы на миссию.", "Спор об искусстве."]
     random.shuffle(BANTER_SEEDS)
 
@@ -419,12 +430,11 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                 await asyncio.sleep(2 ** attempt)
     return None
 
-# ========================= POST-PROCESSING =========================
+# ========================= ПОСТ-ОБРАБОТКА =========================
 
 def fix_bad_format(text: str, default_name: str) -> str:
     if not text:
         return text
-    # Удаляем строки-маркдаун или рассуждения
     lines = text.split('\n')
     cleaned_lines = []
     for line in lines:
@@ -466,7 +476,7 @@ def fix_bad_format(text: str, default_name: str) -> str:
     text = re.sub(r'\bюзер\b', 'ты', text, flags=re.IGNORECASE)
     return text
 
-# ========================= BANTER GENERATION =========================
+# ========================= БАНТЕР (СЛУЧАЙНЫЕ ДИАЛОГИ) =========================
 
 async def send_akatsuki_banter():
     channel = bot.get_channel(MAIN_CHANNEL_ID)
@@ -490,7 +500,95 @@ async def send_akatsuki_banter():
     if response:
         await channel.send(response)
 
-# ========================= BIRTHDAY SYSTEM =========================
+# ========================= СИСТЕМА ПРАЗДНИКОВ =========================
+
+def get_today_fixed_holiday():
+    """Возвращает название фиксированного праздника из config, если совпадает"""
+    if not HOLIDAYS_ENABLED:
+        return None
+    now = now_msk()
+    for h in HOLIDAYS_LIST:
+        if now.month == h["month"] and now.day == h["day"]:
+            return h["name"]
+    return None
+
+async def search_holidays_online():
+    """DeepSeek ищет в интернете все праздники сегодняшнего дня"""
+    today_str = now_msk().strftime('%d.%m.%Y')
+    prompt = [
+        {"role": "system", "content": "Ты — помощник, который ищет информацию в интернете. Найди ВСЕ праздники (официальные, профессиональные, народные, необычные, забавные), которые отмечаются сегодня. Верни ТОЛЬКО список названий праздников, по одному в строке. Без лишних слов. На русском языке. Не используй слова 'автор', 'пользователь'."},
+        {"role": "user", "content": f"Какие праздники сегодня, {today_str}? Используй поиск в интернете, чтобы узнать."}
+    ]
+    response = await ask_deepseek(prompt, max_tokens=500, temperature=0.7)
+    if not response:
+        return []
+    # Разбиваем на строки и чистим
+    lines = [line.strip() for line in response.split('\n') if line.strip()]
+    # Убираем возможные маркеры списка
+    holidays = []
+    for line in lines:
+        line = re.sub(r'^[\d\-*•]+\.?\s*', '', line)
+        if line and len(line) > 2:
+            holidays.append(line)
+    return holidays
+
+async def send_holiday_greeting(holiday_name: str):
+    """Отправляет поздравление с указанным праздником"""
+    channel = bot.get_channel(MAIN_CHANNEL_ID)
+    if not channel:
+        return
+    participants = random.sample(list(AKATSUKI_MEMBERS.keys()), random.randint(2, 3))
+    participant_names = format_character_names(participants)
+    character_prompt = build_character_prompt(participants)
+    prompt = [
+        {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
+        {"role": "user", "content": f"Сгенерируй поздравление с праздником: {holiday_name}.\nУчастники: {participant_names}\nФОРМАТ: **Имя**: текст\n6-10 сообщений."}
+    ]
+    response = await ask_deepseek(prompt)
+    if response:
+        await channel.send(f"🎉 {holiday_name}! 🎉\n{response}")
+
+async def send_no_holiday_comment():
+    """Если праздников нет – отправляем комментарий в духе 'жаль, не выпить'"""
+    channel = bot.get_channel(MAIN_CHANNEL_ID)
+    if not channel:
+        return
+    participants = random.sample(list(AKATSUKI_MEMBERS.keys()), random.randint(2, 3))
+    participant_names = format_character_names(participants)
+    character_prompt = build_character_prompt(participants)
+    prompt = [
+        {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
+        {"role": "user", "content": f"Сегодня нет никакого праздника. Участники: {participant_names}. Пусть каждый выскажется в своём стиле, например: 'Эх, жаль, сегодня не выпить', 'Скучный день', 'День без взрывов' и т.п. Формат: **Имя**: текст. Минимум 3 сообщения."}
+    ]
+    response = await ask_deepseek(prompt)
+    if response:
+        await channel.send(response)
+
+async def random_holiday_check():
+    """Проверяет случайные праздники: ищет в интернете, если есть – поздравляет, иначе – с вероятностью commentary_chance говорит 'жаль'"""
+    global last_random_holiday_date
+    now = now_msk()
+    # Защита от многократного вызова в один день
+    if last_random_holiday_date == now.date():
+        return
+    # Проверяем, является ли сегодня случайным днём недели
+    if now.weekday() not in random_holiday_weekdays:
+        return
+    last_random_holiday_date = now.date()
+    
+    # Ищем праздники в интернете
+    holidays = await search_holidays_online()
+    if holidays:
+        # Выбираем случайный праздник из найденных
+        chosen = random.choice(holidays)
+        await send_holiday_greeting(chosen)
+    else:
+        # Праздников нет – с вероятностью RANDOM_HOLIDAYS_COMMENT_CHANCE жалуемся
+        if random.random() < RANDOM_HOLIDAYS_COMMENT_CHANCE:
+            await send_no_holiday_comment()
+        # Иначе ничего не делаем
+
+# ========================= СИСТЕМА ДНЕЙ РОЖДЕНИЯ =========================
 
 def parse_birthday(date_str: str):
     if not date_str:
@@ -520,13 +618,24 @@ async def send_birthday_message(uid, data):
     character_prompt = build_character_prompt(participants)
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
-        {"role": "user", "content": f"Сгенерируй поздравление для {name}.\nУчастники: {participant_names}\nФОРМАТ: **Имя**: текст\n8-12 сообщений."}
+        {"role": "user", "content": f"Сгенерируй поздравление с днём рождения для {name}.\nУчастники: {participant_names}\nФОРМАТ: **Имя**: текст\n8-12 сообщений."}
     ]
     response = await ask_deepseek(prompt)
     if response:
         await channel.send(f"🎂 {name}\n{response}")
 
-# ========================= LOOPS =========================
+# ========================= ИНИЦИАЛИЗАЦИЯ СЛУЧАЙНЫХ ДНЕЙ =========================
+
+def init_random_holidays():
+    global random_holiday_weekdays
+    if not RANDOM_HOLIDAYS_ENABLED:
+        random_holiday_weekdays = []
+        return
+    random_holiday_weekdays = random.sample(range(7), RANDOM_HOLIDAYS_DAYS_PER_WEEK)
+    days_names = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+    print(f"🎲 Случайные дни для поиска праздников: {[days_names[d] for d in random_holiday_weekdays]}")
+
+# ========================= ЦИКЛЫ =========================
 
 @tasks.loop(minutes=15)
 async def random_banter_loop():
@@ -539,13 +648,21 @@ async def random_banter_loop():
 async def birthday_check_loop():
     await bot.wait_until_ready()
     now = now_msk()
-    if now.hour != 7 or now.minute != 0:
-        return
-    for uid, data in users_memory.items():
-        if not data.get("wife") or not data.get("birthday"):
-            continue
-        if is_today_birthday(data["birthday"], now):
-            await send_birthday_message(uid, data)
+    # Проверяем только раз в час (например, в 9:00)
+    if now.hour == 9 and now.minute == 0:
+        # 1. Фиксированный праздник из конфига
+        fixed_holiday = get_today_fixed_holiday()
+        if fixed_holiday:
+            await send_holiday_greeting(fixed_holiday)
+        # 2. Случайные праздники (поиск в интернете)
+        if RANDOM_HOLIDAYS_ENABLED:
+            await random_holiday_check()
+        # 3. Дни рождения
+        for uid, data in users_memory.items():
+            if not data.get("wife") or not data.get("birthday"):
+                continue
+            if is_today_birthday(data["birthday"], now):
+                await send_birthday_message(uid, data)
 
 @tasks.loop(hours=EMOJI_REFRESH_HOURS)
 async def refresh_emojis_task():
@@ -557,7 +674,7 @@ async def refresh_emojis_task():
         server_emojis = guild.emojis
         print(f"✅ Эмодзи обновлены: {len(server_emojis)}")
 
-# ========================= COMMANDS =========================
+# ========================= КОМАНДЫ =========================
 
 @bot.command(name='обновить_эмодзи')
 async def manual_refresh_emojis(ctx):
@@ -580,7 +697,7 @@ async def reload_prompts(ctx):
     load_character_prompts()
     await ctx.send(f"✅ Промпты перезагружены. Загружено {len(CHARACTER_PROMPTS)} персонажей.")
 
-# ========================= MESSAGE HANDLER =========================
+# ========================= ОБРАБОТЧИК СООБЩЕНИЙ =========================
 
 @bot.event
 async def on_message(message):
@@ -593,7 +710,7 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # ========== ОБРАБОТКА АНЕКДОТА ==========
+    # ========== АНЕКДОТ ==========
     joke_keywords = ["анекдот", "расскажи анекдот", "пошути", "смешное", "забавное"]
     if any(kw in message.content.lower() for kw in joke_keywords):
         random_char = random.choice(list(AKATSUKI_MEMBERS.keys()))
@@ -648,7 +765,7 @@ async def on_message(message):
 
     extra_context = ""
 
-    # ---- Информация о жёнах ----
+    # Информация о жёнах
     for resp_char in responders:
         wives = character_wives_info.get(resp_char, [])
         if wives:
@@ -662,7 +779,7 @@ async def on_message(message):
     if extra_context:
         extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
-    # ---- Статус собеседницы (только факты) ----
+    # Статус собеседницы
     for resp_char in responders:
         char_name = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
@@ -722,13 +839,14 @@ async def on_message(message):
     add_to_history(message.channel.id, "assistant", cleaned)
     await bot.process_commands(message)
 
-# ========================= READY EVENT =========================
+# ========================= ЗАПУСК БОТА =========================
 
 @bot.event
 async def on_ready():
     global server_emojis
     load_character_prompts()
     load_banter_seeds()
+    init_random_holidays()
     print(f"✅ Акацуки бот запущен: {bot.user}")
     print(f"🕒 Moscow time: {now_msk().strftime('%H:%M')}")
     guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
@@ -743,7 +861,7 @@ async def on_ready():
     if not refresh_emojis_task.is_running():
         refresh_emojis_task.start()
 
-# ========================= CLEANUP =========================
+# ========================= ЗАКРЫТИЕ СЕССИИ =========================
 
 async def close_http_session():
     global http_session
