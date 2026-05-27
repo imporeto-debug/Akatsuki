@@ -553,7 +553,7 @@ async def search_holidays_online():
         {"role": "system", "content": "Ты — помощник. Найди ВСЕ праздники сегодня. Верни ТОЛЬКО список названий, по одному в строке. На русском. Без слов 'автор'."},
         {"role": "user", "content": f"Какие праздники сегодня, {today_str}? Используй поиск."}
     ]
-    response = await ask_deepseek(prompt, max_tokens=500, temperature=0.7, skip_validation=True)
+    response = await ask_deepseek(prompt, max_tokens=4000, temperature=0.9, skip_validation=True)
     if not response:
         return []
     response = strip_reasoning(response)
