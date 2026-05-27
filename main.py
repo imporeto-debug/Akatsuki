@@ -600,7 +600,7 @@ async def send_birthday_message(uid, data):
     if response:
         await channel.send(f"🎂 {name}\n{response}")
 
-# ========================= ИНИЦИАЛИЗАЦИЯ =========================
+# ========================= ИНИЦИАЛИЗАЦИЯ СЛУЧАЙНЫХ ДНЕЙ =========================
 
 def init_random_holidays():
     global random_holiday_weekdays
@@ -680,17 +680,17 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # ========== АНЕКДОТ ==========
+    # ========== АНЕКДОТ (как у Астариона) ==========
     joke_keywords = ["анекдот", "расскажи анекдот", "пошути", "смешное", "забавное"]
     if any(kw in message.content.lower() for kw in joke_keywords):
         random_char = random.choice(list(AKATSUKI_MEMBERS.keys()))
         char_name = AKATSUKI_MEMBERS[random_char]["name"]
         joke_prompt = [
-            {"role": "system", "content": f"Ты персонаж {char_name} из Акацуки. Расскажи короткий смешной анекдот. Только анекдот, без пояснений, без 'я расскажу'. Просто текст анекдота."},
+            {"role": "system", "content": f"Ты персонаж {char_name} из Акацуки. Расскажи короткий смешной анекдот. 2–6 предложений, в своём характере. Только анекдот, без предисловий, без 'я расскажу', без указания темы."},
             {"role": "user", "content": "Расскажи анекдот."}
         ]
         async with message.channel.typing():
-            reply = await ask_deepseek(joke_prompt, max_tokens=400, temperature=0.9, skip_validation=True)
+            reply = await ask_deepseek(joke_prompt, max_tokens=1200, temperature=1.0, skip_validation=True)
         if reply:
             reply_clean = re.sub(rf'^\**{re.escape(char_name)}\**\s*[:：]\s*', '', reply.strip(), flags=re.IGNORECASE)
             reply_clean = reply_clean.strip()
@@ -699,16 +699,7 @@ async def on_message(message):
             else:
                 await message.reply(f"**{char_name}**: {reply}", mention_author=False)
         else:
-            # Вторая попытка без указания персонажа
-            joke_prompt2 = [
-                {"role": "system", "content": "Расскажи короткий смешной анекдот. Только анекдот, без лишних слов."},
-                {"role": "user", "content": "Анекдот."}
-            ]
-            reply2 = await ask_deepseek(joke_prompt2, max_tokens=400, temperature=0.9, skip_validation=True)
-            if reply2:
-                await message.reply(f"**{char_name}**: {reply2}", mention_author=False)
-            else:
-                await message.reply(f"**{char_name}**: Хм, память взорвалась... Не могу вспомнить анекдот.", mention_author=False)
+            await message.reply(f"**{char_name}**: Не могу сейчас вспомнить... спроси позже.", mention_author=False)
         await bot.process_commands(message)
         return
 
