@@ -247,12 +247,17 @@ last_request_time = 0
 def now_msk():
     return datetime.now(MSK)
 
-def add_to_history(channel_id, role, content):
+def add_to_history(channel_id, role, content, author_name=None):
+    """Сохраняем сообщение в историю, для пользователя указываем имя."""
     if channel_id not in MEMORY_CHANNELS:
         return
     if channel_id not in conversation_history:
         conversation_history[channel_id] = []
-    conversation_history[channel_id].append({"role": role, "content": content})
+    if role == "user" and author_name:
+        formatted = f"{author_name}: {content}"
+    else:
+        formatted = content  # для assistant оставляем как есть
+    conversation_history[channel_id].append({"role": role, "content": formatted})
     if len(conversation_history[channel_id]) > MAX_HISTORY_MESSAGES:
         conversation_history[channel_id] = conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
 
@@ -328,6 +333,35 @@ def build_character_prompt(characters):
 
 def format_character_names(characters):
     return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
+
+# ========================= ФИЛЬТРАЦИЯ РАССУЖДЕНИЙ =========================
+
+def strip_reasoning(text: str) -> str:
+    if not text:
+        return text
+    lines = text.split('\n')
+    cleaned = []
+    for line in lines:
+        line_stripped = line.strip()
+        if not line_stripped:
+            cleaned.append(line)
+            continue
+        reasoning_patterns = [
+            r'^(идея|план|рассуждени[ея]|мысль|рефлексия|сначала подумаю|так, давай подумаем|ладно, разберемся|ну, допустим|предлагаю тему|во-первых, нужно придумать)',
+            r'^\*\*[^*]+\*\*:\s*(идея|план|рассуждени[ея]|мысль)',
+            r'^формат\s*[:—]',
+            r'^формат\s+',
+        ]
+        is_reasoning = False
+        for pattern in reasoning_patterns:
+            if re.search(pattern, line_stripped, re.IGNORECASE):
+                is_reasoning = True
+                break
+        if not is_reasoning:
+            cleaned.append(line)
+    result = '\n'.join(cleaned).strip()
+    result = re.sub(r'^\s*формат\s*[:—]\s*', '', result, flags=re.IGNORECASE)
+    return result if result else None
 
 # ========================= DEEPSEEK API =========================
 
@@ -494,7 +528,13 @@ async def send_akatsuki_banter():
     ]
     response = await ask_deepseek(prompt)
     if response:
-        await channel.send(response)
+        response = strip_reasoning(response)
+        if response:
+            await channel.send(response)
+        else:
+            print("⚠️ Бантер: ответ удалён фильтром рассуждений")
+    else:
+        print("⚠️ Бантер: ответ не получен")
 
 # ========================= ПРАЗДНИКИ =========================
 
@@ -514,6 +554,9 @@ async def search_holidays_online():
         {"role": "user", "content": f"Какие праздники сегодня, {today_str}? Используй поиск."}
     ]
     response = await ask_deepseek(prompt, max_tokens=500, temperature=0.7, skip_validation=True)
+    if not response:
+        return []
+    response = strip_reasoning(response)
     if not response:
         return []
     lines = [line.strip() for line in response.split('\n') if line.strip()]
@@ -537,7 +580,9 @@ async def send_holiday_greeting(holiday_name: str):
     ]
     response = await ask_deepseek(prompt)
     if response:
-        await channel.send(f"🎉 {holiday_name}! 🎉\n{response}")
+        response = strip_reasoning(response)
+        if response:
+            await channel.send(f"🎉 {holiday_name}! 🎉\n{response}")
 
 async def send_no_holiday_comment():
     channel = bot.get_channel(MAIN_CHANNEL_ID)
@@ -552,7 +597,9 @@ async def send_no_holiday_comment():
     ]
     response = await ask_deepseek(prompt)
     if response:
-        await channel.send(response)
+        response = strip_reasoning(response)
+        if response:
+            await channel.send(response)
 
 async def random_holiday_check():
     global last_random_holiday_date
@@ -604,7 +651,9 @@ async def send_birthday_message(uid, data):
     ]
     response = await ask_deepseek(prompt)
     if response:
-        await channel.send(f"🎂 {name}\n{response}")
+        response = strip_reasoning(response)
+        if response:
+            await channel.send(f"🎂 {name}\n{response}")
 
 # ========================= ИНИЦИАЛИЗАЦИЯ СЛУЧАЙНЫХ ДНЕЙ =========================
 
@@ -681,31 +730,38 @@ async def reload_prompts(ctx):
 async def on_message(message):
     if message.author.bot:
         return
-    add_to_history(message.channel.id, "user", message.content)
+
+    # Сохраняем в историю с именем автора
+    add_to_history(message.channel.id, "user", message.content, message.author.display_name)
+
     if message.channel.id != MAIN_CHANNEL_ID:
         await bot.process_commands(message)
         return
 
-    # ========== АНЕКДОТ (как у Астариона) ==========
+    # ========== АНЕКДОТ (реальные анекдоты, переделанные под Наруто) ==========
     joke_keywords = ["анекдот", "расскажи анекдот", "пошути", "смешное", "забавное"]
     if any(kw in message.content.lower() for kw in joke_keywords):
         random_char = random.choice(list(AKATSUKI_MEMBERS.keys()))
         char_name = AKATSUKI_MEMBERS[random_char]["name"]
         joke_prompt = [
-            {"role": "system", "content": f"Ты персонаж {char_name} из Акацуки. Расскажи короткий смешной анекдот. 2–6 предложений, в своём характере. Только анекдот, без предисловий, без 'я расскажу', без указания темы."},
+            {"role": "system", "content": f"Ты — персонаж {char_name} из Акацуки. Твоя задача: рассказать короткий смешной анекдот. ВОЗЬМИ ЛЮБОЙ РЕАЛЬНЫЙ АНЕКДОТ (про Вовочку, Штирлица, армейский, бытовой, про политиков, про животных — любой) и ПЕРЕДЕЛАЙ ЕГО ПОД МИР НАРУТО, ЗАМЕНИВ ПЕРСОНАЖЕЙ И РЕАЛИИ, НО СОХРАНИ СМЕШНУЮ СУТЬ. Например, вместо Вовочки — Наруто, вместо учителя — Какаши, вместо армии — Акацука. 2–6 предложений. Только текст анекдота, без предисловий, без 'я расскажу'."},
             {"role": "user", "content": "Расскажи анекдот."}
         ]
         async with message.channel.typing():
-            reply = await ask_deepseek(joke_prompt, max_tokens=1200, temperature=1.0, skip_validation=True)
+            reply = await ask_deepseek(joke_prompt, max_tokens=2500, temperature=1.0, skip_validation=True)
         if reply:
-            reply_clean = re.sub(rf'^\**{re.escape(char_name)}\**\s*[:：]\s*', '', reply.strip(), flags=re.IGNORECASE)
-            reply_clean = reply_clean.strip()
-            if reply_clean:
-                await message.reply(f"**{char_name}**: {reply_clean}", mention_author=False)
+            reply = strip_reasoning(reply)
+            if reply:
+                reply_clean = re.sub(rf'^\**{re.escape(char_name)}\**\s*[:：]\s*', '', reply.strip(), flags=re.IGNORECASE)
+                reply_clean = reply_clean.strip()
+                if reply_clean:
+                    await message.reply(f"**{char_name}**: {reply_clean}", mention_author=False)
+                else:
+                    await message.reply(f"**{char_name}**: {reply}", mention_author=False)
             else:
-                await message.reply(f"**{char_name}**: {reply}", mention_author=False)
+                await message.reply(f"**{char_name}**: Не могу сейчас вспомнить анекдот.", mention_author=False)
         else:
-            await message.reply(f"**{char_name}**: Не могу сейчас вспомнить... спроси позже.", mention_author=False)
+            await message.reply(f"**{char_name}**: Не могу сейчас вспомнить анекдот.", mention_author=False)
         await bot.process_commands(message)
         return
 
@@ -776,19 +832,25 @@ async def on_message(message):
     if len(responders) >= 2:
         extra_context += "Могут перебивать, спорить, язвить.\n"
 
-    history = conversation_history.get(message.channel.id, [])[-8:]
+    # Берём историю (теперь в ней сообщения с именами пользователей)
+    history = conversation_history.get(message.channel.id, [])[-MAX_HISTORY_MESSAGES:]
 
-    user_context = f"""Сообщение: {message.content}
+    user_context = f"""Ты отвечаешь на сообщение от пользователя "{message.author.display_name}".
+Его сообщение: {message.content}
 Отвечают: {format_character_names(responders)}
 {extra_context}
 ФОРМАТ: **Имя**: текст
-Минимум 2 сообщения если персонажей несколько."""
+Минимум 2 сообщения если персонажей несколько.
+Не перепутай с другими пользователями, которые писали ранее. Отвечай именно {message.author.display_name}."""
+    
     if server_emojis:
         emojis_list = [str(e) for e in server_emojis[:30]]
         user_context += f"\nДоступные эмодзи: {', '.join(emojis_list)}."
         user_context += " Можешь ИНОГДА добавить в конец НЕ БОЛЕЕ ОДНОГО эмодзи."
 
+    # Формируем промпт с историей и текущим сообщением
     prompt = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_context}]
+
     await add_multi_reactions(message, responders)
 
     async with message.channel.typing():
