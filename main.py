@@ -109,6 +109,11 @@ IMPORTANT:
 - Characters may suddenly join conversation
 - Conversations should feel chaotic and alive
 - Different characters MUST sound different
+
+STRICTLY FORBIDDEN:
+- Never use words "автор", "авторша", "пользователь", "пользовательница", "юзер".
+- Never refer to the person who wrote the message in third person.
+- Never say "рассказываю анекдот", "шутка такая" — just tell the joke.
 """
 
 # ========================= CHARACTER PROMPTS =========================
@@ -304,18 +309,32 @@ PARTNER_INTERRUPTS = {
     ],
 }
 
-# ========================= TOPICS =========================
+# ========================= BANTER SEEDS (из файла) =========================
 
-BANTER_TOPICS = [
-    "кто разрушил базу",
-    "жалобы на миссию",
-    "спор об искусстве или политике",
-    "планирование миссии (бюджет, кто участвует, споры и склоки)",
-    "ремонт после взрыва",
-    "Кисаме снова съел чужое",
-    "Саске делает что-то в стиле Саске",
-    "внутренние конфликты Акацуки",
-]
+BANTER_SEEDS_FILE = "banter_seeds.json"
+BANTER_SEEDS = []
+SEED_SKIP_CHANCE = 30  # 30% шанс, что затравка не передаётся
+
+def load_banter_seeds():
+    global BANTER_SEEDS
+    try:
+        with open(BANTER_SEEDS_FILE, "r", encoding="utf-8") as f:
+            seeds = json.load(f)
+            if isinstance(seeds, list) and seeds:
+                random.shuffle(seeds)
+                BANTER_SEEDS = seeds
+                print(f"✅ Загружено {len(BANTER_SEEDS)} затравок, порядок перемешан")
+                return
+    except Exception as e:
+        print(f"❌ Ошибка загрузки {BANTER_SEEDS_FILE}: {e}")
+    # fallback
+    BANTER_SEEDS = ["Кто-то разрушил базу.", "Жалобы на миссию.", "Спор об искусстве."]
+    random.shuffle(BANTER_SEEDS)
+
+def get_banter_seed():
+    if random.randint(1, 100) <= SEED_SKIP_CHANCE:
+        return None
+    return random.choice(BANTER_SEEDS)
 
 # ========================= USERS =========================
 
@@ -474,7 +493,7 @@ def build_character_prompt(characters):
 def format_character_names(characters):
     return ", ".join(AKATSUKI_MEMBERS[c]["name"] for c in characters)
 
-# ========================= DEEPSEEK API (с переиспользованием сессии) =========================
+# ========================= DEEPSEEK API =========================
 
 def extract_dialogue_from_reasoning(text: str) -> str:
     lines = text.split('\n')
@@ -486,6 +505,22 @@ def extract_dialogue_from_reasoning(text: str) -> str:
         if re.match(r'^[А-ЯЁ][а-яё]+:', line):
             return line
     return None
+
+def is_valid_dialogue(text: str) -> bool:
+    if not text:
+        return False
+    lines = text.strip().split('\n')
+    valid_lines = 0
+    for line in lines:
+        line = line.strip()
+        if line.startswith('**') and '**:' in line:
+            valid_lines += 1
+    if valid_lines == 0:
+        return False
+    reasoning_words = ['я думаю', 'наверное', 'возможно', 'мне кажется', 'рассуждение', 'итак', 'таким образом', 'во-первых']
+    if any(word in text.lower() for word in reasoning_words):
+        return False
+    return True
 
 async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3):
     global last_request_time, http_session
@@ -542,15 +577,15 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
                             continue
 
                         content = choice["message"].get("content", "").strip()
-                        if content:
+                        if content and is_valid_dialogue(content):
                             return content
 
                         reasoning = choice["message"].get("reasoning_content", "").strip()
                         if reasoning:
                             dialogue = extract_dialogue_from_reasoning(reasoning)
-                            if dialogue:
+                            if dialogue and is_valid_dialogue(dialogue):
                                 return dialogue
-                            print("No dialogue in reasoning, retrying")
+                            print("No valid dialogue in reasoning, retrying")
                             continue
                     elif resp.status == 429:
                         print(f"Rate limit, retrying in {2**attempt}s")
@@ -568,6 +603,20 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
 def fix_bad_format(text: str, default_name: str) -> str:
     if not text:
         return text
+    # Удаляем строки-маркдаун или рассуждения
+    lines = text.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith('#') or line.startswith('* ') or line.startswith('- ') or line.startswith('>'):
+            continue
+        if line.lower().startswith('я думаю') or line.lower().startswith('наверное') or line.lower().startswith('возможно'):
+            continue
+        cleaned_lines.append(line)
+    text = '\n'.join(cleaned_lines)
+    
     if text.startswith('**:'):
         text = f"**{default_name}**{text[2:]}"
     match = re.match(r'^\*\*([^*]+)\*\*(?!:)', text)
@@ -587,6 +636,13 @@ def fix_bad_format(text: str, default_name: str) -> str:
         text = f"**{full_name}**: {rest}"
     if not text.startswith('**'):
         text = f"**{default_name}**: {text}"
+    
+    # Зачистка мета-обращений
+    text = re.sub(r'\bавторш[ауеиы]\b', 'ты', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bавтор\b', 'ты', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bпользователь\b', 'ты', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bпользовательниц[ауеиы]\b', 'ты', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bюзер\b', 'ты', text, flags=re.IGNORECASE)
     return text
 
 # ========================= BANTER GENERATION =========================
@@ -596,12 +652,18 @@ async def send_akatsuki_banter():
     if not channel:
         return
     participants = random.sample(list(AKATSUKI_MEMBERS.keys()), random.randint(2, 3))
-    topic = random.choice(BANTER_TOPICS)
     participant_names = format_character_names(participants)
     character_prompt = build_character_prompt(participants)
+    
+    seed = get_banter_seed()
+    if seed is None:
+        user_content = f"Сделай живой диалог Акацуки.\nУчастники: {participant_names}\nФОРМАТ: **Имя**: текст\nМинимум 8 сообщений. Придумай тему сам."
+    else:
+        user_content = f"Сделай живой диалог Акацуки.\nУчастники: {participant_names}\nЗатравка (можно развить или игнорировать): {seed}\nФОРМАТ: **Имя**: текст\nМинимум 8 сообщений."
+    
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
-        {"role": "user", "content": f"Сделай живой диалог Акацуки.\nУчастники: {participant_names}\nТема: {topic}\nФОРМАТ: **Имя**: текст\nМинимум 8 сообщений."}
+        {"role": "user", "content": user_content}
     ]
     response = await ask_deepseek(prompt)
     if response:
@@ -687,6 +749,11 @@ async def manual_refresh_emojis(ctx):
     server_emojis = guild.emojis
     await ctx.send(f"✅ Загружено {len(server_emojis)} эмодзи")
 
+@bot.command(name='перемешать_темы')
+async def reshuffle_seeds(ctx):
+    random.shuffle(BANTER_SEEDS)
+    await ctx.send(f"✅ Список затравок перемешан. Всего {len(BANTER_SEEDS)}.")
+
 # ========================= MESSAGE HANDLER =========================
 
 @bot.event
@@ -697,6 +764,25 @@ async def on_message(message):
     add_to_history(message.channel.id, "user", message.content)
 
     if message.channel.id != MAIN_CHANNEL_ID:
+        await bot.process_commands(message)
+        return
+
+    # ========== ОБРАБОТКА АНЕКДОТА ==========
+    joke_keywords = ["анекдот", "расскажи анекдот", "пошути", "смешное", "забавное"]
+    if any(kw in message.content.lower() for kw in joke_keywords):
+        random_char = random.choice(list(AKATSUKI_MEMBERS.keys()))
+        char_name = AKATSUKI_MEMBERS[random_char]["name"]
+        joke_prompt = [
+            {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + CHARACTER_PROMPTS[random_char] + "\nВАЖНО: Никаких рассуждений. Только анекдот. Не используй слова 'автор', 'авторша', 'пользователь', 'пользовательница'."},
+            {"role": "user", "content": f"Расскажи короткий смешной анекдот от лица {char_name}. Формат: **{char_name}**: текст анекдота. Без комментариев, без 'рассказываю анекдот'. Просто анекдот."}
+        ]
+        async with message.channel.typing():
+            reply = await ask_deepseek(joke_prompt, max_tokens=500, temperature=0.9)
+        if reply:
+            cleaned = fix_bad_format(reply, char_name)
+            await message.reply(cleaned, mention_author=False)
+        else:
+            await message.reply(f"**{char_name}**: Хм, память взорвалась... Не могу вспомнить анекдот.", mention_author=False)
         await bot.process_commands(message)
         return
 
@@ -718,17 +804,6 @@ async def on_message(message):
             wife_character = husband
             break
     is_wife = len(user_husbands) > 0
-
-    # ========== ОПРЕДЕЛЕНИЕ ПОЛА АВТОРА (ВСЕ УЧАСТНИЦЫ — ДЕВУШКИ) ==========
-    # Если автор не является женой персонажа (т.е. обычная участница), 
-    # то явно указываем, что автор — женщина.
-    # Для жен персонажей пол уже определён как женский.
-    if not is_wife and wife_character is None:
-        author_gender = "женщина"
-        author_gender_context = "Автор — женщина. Обращайся к ней в женском роде."
-    else:
-        author_gender = "женщина"  # жёны персонажей — тоже женщины
-        author_gender_context = "Автор — жена персонажа. Обращайся к ней в женском роде."
 
     if wife_character:
         responder = wife_character
@@ -761,21 +836,20 @@ async def on_message(message):
     if extra_context:
         extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
-    # ---- Кем является автор с учётом пола ----
+    # ---- Статус собеседницы (только факты) ----
     for resp_char in responders:
         char_name = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
-            extra_context += f"{char_name} знает — автор его жена.\n"
+            extra_context += f"{char_name} знает — его жена пишет.\n"
         else:
-            # Для всех остальных участниц — явно женщина
-            extra_context += f"{char_name} знает — автор — женщина, НЕ его жена.\n"
+            extra_context += f"{char_name} знает — это женщина, не его жена.\n"
 
     if wife_character:
-        extra_context += f"Пользователь — жена {AKATSUKI_MEMBERS[wife_character]['name']}. Относись соответственно.\n"
+        extra_context += f"Это жена {AKATSUKI_MEMBERS[wife_character]['name']}.\n"
     elif is_wife:
-        extra_context += f"Пользователь — жена {format_character_names(user_husbands)}.\n"
+        extra_context += f"Это жена {format_character_names(user_husbands)}.\n"
     else:
-        extra_context += author_gender_context + "\n"
+        extra_context += "Это женщина.\n"
 
     if interrupted and original_target:
         extra_context += f"{AKATSUKI_MEMBERS[responder]['name']} отвечает вместо {AKATSUKI_MEMBERS[original_target]['name']}\n"
@@ -785,9 +859,7 @@ async def on_message(message):
 
     history = conversation_history.get(message.channel.id, [])[-8:]
 
-    user_context = f"""Автор: {message.author.display_name}
-Пол автора: {author_gender}
-Сообщение: {message.content}
+    user_context = f"""Сообщение: {message.content}
 Отвечают: {format_character_names(responders)}
 {extra_context}
 ФОРМАТ: **Имя**: текст
@@ -829,6 +901,7 @@ async def on_message(message):
 @bot.event
 async def on_ready():
     global server_emojis
+    load_banter_seeds()  # загружаем затравки при запуске
     print(f"✅ Акацуки бот запущен: {bot.user}")
     print(f"🕒 Moscow time: {now_msk().strftime('%H:%M')}")
     guild = bot.get_guild(GUILD_ID_FOR_EMOJIS)
