@@ -6,7 +6,7 @@
   },
   "response": {
     "response_chance": 15,
-    "max_response_tokens": 2500,
+    "max_response_tokens": 4000,
     "max_history_messages": 40,
     "request_delay": 13
   },
