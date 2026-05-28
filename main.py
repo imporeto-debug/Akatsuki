@@ -110,7 +110,7 @@ AKATSUKI_MEMBERS = {
     "tobi": {
         "name": "Тоби",
         "aliases": ["тоби", "tobi", "обито"],
-        "partner": None,   # или "deidara", если летает с Дейдарой
+        "partner": None,
         "emoji": ["🎭", "🌀", "👹", "😜"],
     },
 }
@@ -254,7 +254,6 @@ def now_msk():
     return datetime.now(MSK)
 
 def add_to_history(channel_id, role, content, author_name=None):
-    """Сохраняем сообщение в историю, для пользователя указываем имя."""
     if channel_id not in MEMORY_CHANNELS:
         return
     if channel_id not in conversation_history:
@@ -262,7 +261,7 @@ def add_to_history(channel_id, role, content, author_name=None):
     if role == "user" and author_name:
         formatted = f"{author_name}: {content}"
     else:
-        formatted = content  # для assistant оставляем как есть
+        formatted = content
     conversation_history[channel_id].append({"role": role, "content": formatted})
     if len(conversation_history[channel_id]) > MAX_HISTORY_MESSAGES:
         conversation_history[channel_id] = conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
@@ -357,6 +356,7 @@ def strip_reasoning(text: str) -> str:
             r'^\*\*[^*]+\*\*:\s*(идея|план|рассуждени[ея]|мысль)',
             r'^формат\s*[:—]',
             r'^формат\s+',
+            r'^(придумаем|возьмём|например|допустим|так, вот|короче|ладно|смотри|слушай|значит так)',
         ]
         is_reasoning = False
         for pattern in reasoning_patterns:
@@ -367,6 +367,7 @@ def strip_reasoning(text: str) -> str:
             cleaned.append(line)
     result = '\n'.join(cleaned).strip()
     result = re.sub(r'^\s*формат\s*[:—]\s*', '', result, flags=re.IGNORECASE)
+    result = re.sub(r'^\s*(придумаем|возьмём|например|допустим|так, вот|короче|ладно|смотри|слушай|значит так)\s*', '', result, flags=re.IGNORECASE)
     return result if result else None
 
 # ========================= DEEPSEEK API =========================
@@ -737,37 +738,36 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Сохраняем в историю с именем автора
     add_to_history(message.channel.id, "user", message.content, message.author.display_name)
 
     if message.channel.id != MAIN_CHANNEL_ID:
         await bot.process_commands(message)
         return
 
-    # ========== АНЕКДОТ (реальные анекдоты, переделанные под Наруто) ==========
+    # ========== АНЕКДОТ ==========
     joke_keywords = ["анекдот", "расскажи анекдот", "пошути", "смешное", "забавное"]
     if any(kw in message.content.lower() for kw in joke_keywords):
         random_char = random.choice(list(AKATSUKI_MEMBERS.keys()))
         char_name = AKATSUKI_MEMBERS[random_char]["name"]
         joke_prompt = [
-            {"role": "system", "content": f"Ты — персонаж {char_name} из Акацуки. Твоя задача: рассказать короткий смешной анекдот. ВОЗЬМИ ЛЮБОЙ РЕАЛЬНЫЙ АНЕКДОТ (про Вовочку, Штирлица, армейский, бытовой, про политиков, про животных — любой) и ПЕРЕДЕЛАЙ ЕГО ПОД МИР НАРУТО, ЗАМЕНИВ ПЕРСОНАЖЕЙ И РЕАЛИИ, НО СОХРАНИ СМЕШНУЮ СУТЬ. Например, вместо Вовочки — Наруто, вместо учителя — Какаши, вместо армии — Акацука. 2–6 предложений. Только текст анекдота, без предисловий, без 'я расскажу'."},
+            {"role": "system", "content": f"Ты — {char_name} из Акацуки. Расскажи короткий законченный анекдот (3-6 предложений). Запрещено: писать 'Придумаем', 'Возьмём', 'Например', 'Допустим', 'Короче', 'Слушай', 'Так, вот'. Сразу и без объяснений выдай анекдот. Возьми реальный анекдот из жизни и полностью переделай его в мир Наруто: замени имена и реалии, но сохрани структуру. Никаких Вовочек, только персонажи Наруто. Только текст анекдота."},
             {"role": "user", "content": "Расскажи анекдот."}
         ]
         async with message.channel.typing():
-            reply = await ask_deepseek(joke_prompt, max_tokens=3500, temperature=1.0, skip_validation=True)
+            reply = await ask_deepseek(joke_prompt, max_tokens=4000, temperature=1.0, skip_validation=True)
         if reply:
             reply = strip_reasoning(reply)
             if reply:
                 reply_clean = re.sub(rf'^\**{re.escape(char_name)}\**\s*[:：]\s*', '', reply.strip(), flags=re.IGNORECASE)
                 reply_clean = reply_clean.strip()
-                if reply_clean:
+                if reply_clean and len(reply_clean) > 10 and not re.match(r'^(вот|так|значит|короче|ладно|придумаем|возьмём)', reply_clean, re.IGNORECASE):
                     await message.reply(f"**{char_name}**: {reply_clean}", mention_author=False)
                 else:
-                    await message.reply(f"**{char_name}**: {reply}", mention_author=False)
+                    await message.reply(f"**{char_name}**: Не могу вспомнить анекдот.", mention_author=False)
             else:
-                await message.reply(f"**{char_name}**: Не могу сейчас вспомнить анекдот.", mention_author=False)
+                await message.reply(f"**{char_name}**: Не могу вспомнить анекдот.", mention_author=False)
         else:
-            await message.reply(f"**{char_name}**: Не могу сейчас вспомнить анекдот.", mention_author=False)
+            await message.reply(f"**{char_name}**: Не могу вспомнить анекдот.", mention_author=False)
         await bot.process_commands(message)
         return
 
@@ -820,11 +820,11 @@ async def on_message(message):
         extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
     for resp_char in responders:
-        char_name = AKATSUKI_MEMBERS[resp_char]['name']
+        char_name_temp = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
-            extra_context += f"{char_name} знает — его жена пишет.\n"
+            extra_context += f"{char_name_temp} знает — его жена пишет.\n"
         else:
-            extra_context += f"{char_name} знает — это женщина, не его жена.\n"
+            extra_context += f"{char_name_temp} знает — это женщина, не его жена.\n"
 
     if wife_character:
         extra_context += f"Это жена {AKATSUKI_MEMBERS[wife_character]['name']}.\n"
@@ -838,7 +838,6 @@ async def on_message(message):
     if len(responders) >= 2:
         extra_context += "Могут перебивать, спорить, язвить.\n"
 
-    # Берём историю (теперь в ней сообщения с именами пользователей)
     history = conversation_history.get(message.channel.id, [])[-MAX_HISTORY_MESSAGES:]
 
     user_context = f"""Ты отвечаешь на сообщение от пользователя "{message.author.display_name}".
@@ -854,7 +853,6 @@ async def on_message(message):
         user_context += f"\nДоступные эмодзи: {', '.join(emojis_list)}."
         user_context += " Можешь ИНОГДА добавить в конец НЕ БОЛЕЕ ОДНОГО эмодзи."
 
-    # Формируем промпт с историей и текущим сообщением
     prompt = [{"role": "system", "content": system_prompt}] + history + [{"role": "user", "content": user_context}]
 
     await add_multi_reactions(message, responders)
