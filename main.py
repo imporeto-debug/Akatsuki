@@ -266,14 +266,29 @@ def add_to_history(channel_id, role, content, author_name=None):
     if len(conversation_history[channel_id]) > MAX_HISTORY_MESSAGES:
         conversation_history[channel_id] = conversation_history[channel_id][-MAX_HISTORY_MESSAGES:]
 
+# ====================== УЛУЧШЕННОЕ ОПРЕДЕЛЕНИЕ ПЕРСОНАЖА (УМЕНЬШИТЕЛЬНЫЕ ФОРМЫ) ======================
 def detect_character(text: str):
     text = text.lower()
     for key, data in AKATSUKI_MEMBERS.items():
+        canon = data["name"].lower()
+        # 1. Точное совпадение как слово
+        if re.search(rf'\b{re.escape(canon)}\b', text):
+            return key
+        # 2. Алиасы (например, "обито" для Тоби)
         for alias in data["aliases"]:
-            if re.search(rf"\b{re.escape(alias.lower())}\b", text):
+            if re.search(rf'\b{re.escape(alias.lower())}\b', text):
                 return key
+        # 3. Уменьшительные формы: основа имени (без последней гласной) + суффиксы
+        stem = canon
+        if len(stem) > 2 and stem[-1] in 'аяиуюеё':
+            stem = stem[:-1]
+        suffixes = r'(очк|ечк|ушк|юшк|еньк|оньк|ик|к)'
+        pattern = rf'\b{re.escape(stem)}{suffixes}[ая]?\b'
+        if re.search(pattern, text):
+            return key
     return None
 
+# ====================== ИСПРАВЛЕННЫЙ ПОИСК МУЖЕЙ (ТОЛЬКО ПОЛНЫЕ СЛОВА) ======================
 def detect_user_husbands(uid):
     uid = str(uid)
     if uid not in users_memory:
@@ -283,20 +298,17 @@ def detect_user_husbands(uid):
         return []
     name = info.get("name", "").lower()
     husbands = []
-    if "итачи" in name:
-        husbands.append("itachi")
-    if "кисаме" in name:
-        husbands.append("kisame")
-    if "дейдара" in name:
-        husbands.append("deidara")
-    if "сасори" in name:
-        husbands.append("sasori")
-    if "хидан" in name:
-        husbands.append("hidan")
-    if "какузу" in name:
-        husbands.append("kakuzu")
-    if "саске" in name:
-        husbands.append("sasuke")
+    for char_id, char_data in AKATSUKI_MEMBERS.items():
+        char_name = char_data["name"].lower()
+        # Точное слово
+        if re.search(rf'\b{re.escape(char_name)}\b', name):
+            husbands.append(char_id)
+            continue
+        # Алиасы
+        for alias in char_data["aliases"]:
+            if re.search(rf'\b{re.escape(alias.lower())}\b', name):
+                husbands.append(char_id)
+                break
     return husbands
 
 def build_multi_character_list(main_character):
