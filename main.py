@@ -207,7 +207,7 @@ def load_users():
 
 users_memory = load_users()
 
-# ========================= BUILD CHARACTER WIVES =========================
+# ========================= BUILD CHARACTER WIVES (ИСПРАВЛЕННЫЙ) =========================
 character_wives_info = {}
 
 for uid, data in users_memory.items():
@@ -215,15 +215,27 @@ for uid, data in users_memory.items():
         wife_name = data.get("name", "")
         wife_info = data.get("info", "")
         wife_birthday = data.get("birthday", "")
+        matched_char = None
+        # Ищем персонажа, чьё имя или алиас полностью совпадает с частью имени жены
         for char_id, char_info in AKATSUKI_MEMBERS.items():
             char_name = char_info["name"]
-            if char_name in wife_name:
-                character_wives_info.setdefault(char_id, []).append({
-                    "name": wife_name,
-                    "info": wife_info,
-                    "birthday": wife_birthday
-                })
+            if re.search(rf'\b{re.escape(char_name)}\b', wife_name):
+                matched_char = char_id
+                break
+            for alias in char_info["aliases"]:
+                if re.search(rf'\b{re.escape(alias.lower())}\b', wife_name.lower()):
+                    matched_char = char_id
+                    break
+            if matched_char:
+                break
+        if matched_char:
+            character_wives_info.setdefault(matched_char, []).append({
+                "name": wife_name,
+                "info": wife_info,
+                "birthday": wife_birthday
+            })
 
+# Удаляем дубликаты
 for char_id in character_wives_info:
     unique_wives = []
     seen_names = set()
@@ -271,14 +283,12 @@ def detect_character(text: str):
     text = text.lower()
     for key, data in AKATSUKI_MEMBERS.items():
         canon = data["name"].lower()
-        # 1. Точное совпадение как слово
         if re.search(rf'\b{re.escape(canon)}\b', text):
             return key
-        # 2. Алиасы (например, "обито" для Тоби)
         for alias in data["aliases"]:
             if re.search(rf'\b{re.escape(alias.lower())}\b', text):
                 return key
-        # 3. Уменьшительные формы: основа имени (без последней гласной) + суффиксы
+        # Уменьшительные формы
         stem = canon
         if len(stem) > 2 and stem[-1] in 'аяиуюеё':
             stem = stem[:-1]
@@ -300,11 +310,9 @@ def detect_user_husbands(uid):
     husbands = []
     for char_id, char_data in AKATSUKI_MEMBERS.items():
         char_name = char_data["name"].lower()
-        # Точное слово
         if re.search(rf'\b{re.escape(char_name)}\b', name):
             husbands.append(char_id)
             continue
-        # Алиасы
         for alias in char_data["aliases"]:
             if re.search(rf'\b{re.escape(alias.lower())}\b', name):
                 husbands.append(char_id)
