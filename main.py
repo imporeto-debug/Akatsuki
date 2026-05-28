@@ -107,6 +107,12 @@ AKATSUKI_MEMBERS = {
         "partner": None,
         "emoji": ["⚡", "🖤", "🗡️"],
     },
+    "tobi": {
+        "name": "Тоби",
+        "aliases": ["тоби", "tobi", "обито"],
+        "partner": None,   # или "deidara", если летает с Дейдарой
+        "emoji": ["🎭", "🌀", "👹", "😜"],
+    },
 }
 
 # ========================= SYSTEM PROMPT =========================
