@@ -22,7 +22,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
 
     # 2. Формируем промт с вашими стилями
     style = "full body shot, anime style, High quality, Flat colour anime style image showing, high quality image, 8k, ultra UHD, clear image, sharp lines, highly detailed image, realistic anatomy, perfectly realistic hands, anime nose, realistic leg length, No People in the background"
-    final_prompt = f"{prompt}, {style}. Negative: {negative}"
+    final_prompt = f"{prompt}, {style}."
 
     # 3. Параметры запроса (модель и соотношение сторон)
     model = os.getenv("ONLYSQ_IMAGE_MODEL", "flux")  # или "sdxl", "turbo"
