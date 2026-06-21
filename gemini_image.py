@@ -9,7 +9,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
     """Генерирует изображение"""
 
     api_key = os.getenv("ONLYSQ_API_KEY")
-    base_url = os.getenv("ONLYSQ_BASE_URL", "https://api.onlysq.ru/ai/openai")
+    base_url = os.getenv("ONLYSQ_BASE_URL", "https://api.onlysq.ru/ai/imagen")
     if not api_key:
         raise ValueError("RIFT_API_KEY не задан в переменных окружения")
 
