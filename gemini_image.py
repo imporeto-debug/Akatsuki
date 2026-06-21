@@ -17,7 +17,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
 
     # ---------- ВАШ ПОЛНЫЙ СТИЛЬ (без негатива) ----------
     # Я убрал только "No People in the background", остальное оставил
-    style = "full body shot, anime style, high quality, flat colour anime style image, 8k, ultra UHD, clear image, sharp lines, highly detailed image, realistic anatomy, perfectly realistic hands, realistic leg length, correct number of fingers, five fingers, perfectly proportioned limbs, natural poses, accurate human anatomy, no extra fingers, no extra limbs"
+    style = "full body shot, high quality, 8k, ultra UHD, clear image, sharp lines, highly detailed image, realistic anatomy, perfectly realistic hands, realistic leg length, correct number of fingers, five fingers, perfectly proportioned limbs, natural poses, accurate human anatomy, no extra fingers, no extra limbs"
 
     # ---------- ФОРМИРУЕМ ПРОМТ: СНАЧАЛА ЗАПРОС ПОЛЬЗОВАТЕЛЯ ----------
     # Добавляем команду "Draw exactly this:" чтобы модель точно поняла, что рисовать
