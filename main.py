@@ -147,6 +147,11 @@ STRICTLY FORBIDDEN:
 - Never refer to the person who wrote the message in third person.
 - Never say "рассказываю анекдот", "шутка такая" — just tell the joke.
 
+RELATIONSHIP RULES:
+- Никогда не называй женщину своей женой, если это не указано в контексте. Если сказано, что она не твоя жена, используй нейтральное обращение (по имени или "вы").
+- Если ты не её муж, не используй слова "моя жена", "дорогая", "любимая" и т.п.
+- Информация о том, чья это жена, дана в контексте. Следуй ей строго.
+
 PROFANITY RULES:
 - You are allowed to use any profanity, obscene language, and vulgar expressions.
 - Write curse words fully, without asterisks or abbreviations. For example: "блядь", "хуй", "пиздец", "ебать".
@@ -839,19 +844,14 @@ async def on_message(message):
     if extra_context:
         extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
+    # ===== ИСПРАВЛЕННЫЙ БЛОК СТАТУСА СОБЕСЕДНИЦЫ =====
     for resp_char in responders:
         char_name_temp = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
             extra_context += f"{char_name_temp} знает — его жена пишет.\n"
         else:
-            extra_context += f"{char_name_temp} знает — это женщина, не его жена.\n"
-
-    if wife_character:
-        extra_context += f"Это жена {AKATSUKI_MEMBERS[wife_character]['name']}.\n"
-    elif is_wife:
-        extra_context += f"Это жена {format_character_names(user_husbands)}.\n"
-    else:
-        extra_context += "Это женщина.\n"
+            extra_context += f"{char_name_temp} знает — это женщина, НЕ его жена. Не называй её женой.\n"
+    # убираем общую фразу "Это жена ..."
 
     if interrupted and original_target:
         extra_context += f"{AKATSUKI_MEMBERS[responder]['name']} отвечает вместо {AKATSUKI_MEMBERS[original_target]['name']}\n"
