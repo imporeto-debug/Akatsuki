@@ -699,7 +699,7 @@ def init_random_holidays():
 async def random_banter_loop():
     await bot.wait_until_ready()
     now = now_msk()
-    if now.hour in [11, 18, 22] and random.random() < 0.18:
+    if now.hour in [11, 16, 19, 23] and random.random() < 0.28:
         await send_akatsuki_banter()
 
 @tasks.loop(minutes=1)
