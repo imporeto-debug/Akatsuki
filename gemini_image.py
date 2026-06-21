@@ -6,10 +6,10 @@ from PIL import Image
 from openai import OpenAI
 
 def generate_image(prompt: str, output_path: str = "generated_image.png") -> str:
-    """Генерирует изображение через RiftAI."""
+    """Генерирует изображение"""
 
-    api_key = os.getenv("RIFT_API_KEY")
-    base_url = os.getenv("RIFT_BASE_URL", "https://riftai.su/v1")  # <-- обязательно /v1
+    api_key = os.getenv("ONLYSQ_API_KEY")
+    base_url = os.getenv("ONLYSQ_BASE_URL", "https://api.onlysq.ru/ai/openai/v1")  # <-- обязательно /v1
 
     if not api_key:
         raise ValueError("RIFT_API_KEY не задан в переменных окружения")
@@ -23,7 +23,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
 
     try:
         response = client.images.generate(
-            model="gemini-2.5-flash-image",
+            model="flux",
             prompt=final_prompt,
             n=1,
             size="1024x1024",
