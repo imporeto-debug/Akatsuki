@@ -5,6 +5,9 @@ from zoneinfo import ZoneInfo
 import asyncio, aiohttp, discord
 from discord.ext import commands, tasks
 
+# ========================= НОВЫЙ ИМПОРТ ДЛЯ ГЕНЕРАЦИИ =========================
+from gemini_image import generate_image
+
 # ========================= ЗАГРУЗКА КОНФИГУРАЦИИ =========================
 
 CONFIG_FILE = "config.json"
@@ -771,6 +774,47 @@ async def reload_prompts(ctx):
     load_character_prompts()
     await ctx.send(f"✅ Промпты перезагружены. Загружено {len(CHARACTER_PROMPTS)} персонажей.")
 
+# ========================= НОВАЯ КОМАНДА ДЛЯ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЙ =========================
+
+@bot.command(name='нарисуй')
+@commands.cooldown(1, 30, commands.BucketType.user)  # защита от спама – 1 раз в 30 секунд на пользователя
+async def generate_image_command(ctx, *, prompt: str = None):
+    """
+    Генерирует изображение по текстовому запросу через RiftAI.
+    Использование: !нарисуй [описание]
+    """
+    if not prompt:
+        await ctx.send("❌ Укажите, что нарисовать. Пример: `!нарисуй котик в космосе`")
+        return
+
+    # Сообщение о начале генерации
+    waiting = await ctx.send(f"🎨 Генерирую: *\"{prompt}\"*...")
+    filename = None
+
+    try:
+        # Уникальное имя файла (чтобы не пересекаться при параллельных запросах)
+        filename = f"gen_{ctx.author.id}_{int(datetime.now().timestamp())}.png"
+
+        # Генерация в отдельном потоке (функция синхронная, использует requests)
+        await asyncio.to_thread(generate_image, prompt, filename)
+
+        # Проверяем, что файл действительно создался
+        if not os.path.exists(filename):
+            raise RuntimeError("Файл не был создан после генерации")
+
+        # Отправляем картинку в чат
+        with open(filename, "rb") as f:
+            file = discord.File(f, filename="result.png")
+            await ctx.send(f"✨ Готово, {ctx.author.mention}:", file=file)
+
+    except Exception as e:
+        await ctx.send(f"❌ Ошибка при генерации: {e}")
+    finally:
+        # Удаляем временный файл даже при ошибке
+        if filename and os.path.exists(filename):
+            os.remove(filename)
+        await waiting.delete()
+
 # ========================= ОБРАБОТЧИК СООБЩЕНИЙ =========================
 
 @bot.event
@@ -817,7 +861,7 @@ async def on_message(message):
                       isinstance(message.reference.resolved, discord.Message) and
                       message.reference.resolved.author.id == bot.user.id)
     has_name = detect_character(message.content)
-    has_group_call = detect_group_call(message.content)   # <-- НОВАЯ ПРОВЕРКА
+    has_group_call = detect_group_call(message.content)
 
     reply_needed = (mentioned or replied_to_bot or has_name or has_group_call or random.randint(1, 100) <= RESPONSE_CHANCE)
     if not reply_needed:
@@ -838,7 +882,6 @@ async def on_message(message):
         interrupted = False
         original_target = None
     else:
-        # Если есть групповое обращение, выбираем случайного персонажа
         if has_group_call:
             responder = random.choice(list(AKATSUKI_MEMBERS.keys()))
             interrupted = False
@@ -880,7 +923,6 @@ async def on_message(message):
     if len(responders) >= 2:
         extra_context += "Могут перебивать, спорить, язвить.\n"
 
-    # Если было групповое обращение, добавляем пометку
     if has_group_call:
         extra_context += "⚠️ Сообщение содержало групповое обращение (мальчики, ребята, коноха, зайки). Отвечай как от лица группы, но говори только за себя (и других, если нужно).\n"
 
