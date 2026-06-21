@@ -21,8 +21,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
     }
 
     # 2. Формируем промт с вашими стилями
-    style = "full body shot, anime style, gouache painting, rich paint strokes, vibrant colors, artistic canvas art, well proportioned anatomy, masterpiece, high quality"
-    negative = "giant head, big head, disproportionate body, close-up, cropped, portrait, avoiding 3d render, photorealism, real life photo, blurry background, low quality, text, watermark"
+    style = "full body shot, anime style, High quality, Flat colour anime style image showing, high quality image, 8k, ultra UHD, clear image, sharp lines, highly detailed image, realistic anatomy, perfectly realistic hands, anime nose, realistic leg length, No People in the background"
     final_prompt = f"{prompt}, {style}. Negative: {negative}"
 
     # 3. Параметры запроса (модель и соотношение сторон)
