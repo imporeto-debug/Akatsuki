@@ -3,65 +3,67 @@ import requests
 import base64
 from io import BytesIO
 from PIL import Image
-from openai import OpenAI
 
 def generate_image(prompt: str, output_path: str = "generated_image.png") -> str:
-    """Генерирует изображение"""
-
+    """
+    Генерирует изображение через API OnlySq (ImaGen).
+    Документация: https://docs.onlysq.ru/#imagen
+    """
     api_key = os.getenv("ONLYSQ_API_KEY")
-    base_url = os.getenv("ONLYSQ_BASE_URL", "https://api.onlysq.ru/ai/imagen")
     if not api_key:
-        raise ValueError("RIFT_API_KEY не задан в переменных окружения")
+        raise ValueError("ONLYSQ_API_KEY не задан в переменных окружения")
 
+    # 1. Настройки API
+    url = "https://api.onlysq.ru/ai/imagen"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    # 2. Формируем промт с вашими стилями
     style = "character from Naruto anime, full body shot, anime style, gouache painting, rich paint strokes, vibrant colors, artistic canvas art, well proportioned anatomy, masterpiece, high quality"
     negative = "giant head, big head, disproportionate body, close-up, cropped, portrait, avoiding 3d render, photorealism, real life photo, blurry background, low quality, text, watermark"
-
     final_prompt = f"{prompt}, {style}. Negative: {negative}"
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    # 3. Параметры запроса (модель и соотношение сторон)
+    model = os.getenv("ONLYSQ_IMAGE_MODEL", "flux")  # или "sdxl", "turbo"
+    ratio = os.getenv("ONLYSQ_IMAGE_RATIO", "1:1")   # 1:1, 16:9, 9:16 и т.д.
 
+    payload = {
+        "model": model,
+        "prompt": final_prompt,
+        "ratio": ratio
+    }
+
+    # 4. Отправляем запрос
     try:
-        response = client.images.generate(
-            model="flux",
-            prompt=final_prompt,
-            n=1,
-            size="1024x1024",
-        )
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        response.raise_for_status()  # выбросит исключение при HTTP-ошибке
+    except requests.exceptions.RequestException as e:
+        raise RuntimeError(f"Ошибка запроса к API: {e}")
+
+    # 5. Разбираем ответ
+    data = response.json()
+
+    # Проверяем, есть ли поле "files" и не пустое ли оно
+    if not data.get("files"):
+        # Если есть сообщение об ошибке — покажем его
+        error_msg = data.get("error", {}).get("message", "Неизвестная ошибка")
+        raise RuntimeError(f"API не вернул изображение: {error_msg}")
+
+    # 6. Декодируем base64 и сохраняем
+    try:
+        # Берём первую картинку из списка
+        image_base64 = data["files"][0]
+        image_data = base64.b64decode(image_base64)
     except Exception as e:
-        raise RuntimeError(f"Ошибка генерации: {e}")
+        raise RuntimeError(f"Ошибка декодирования изображения: {e}")
 
-    if not response.data:
-        raise RuntimeError("API не вернул данные")
-
-    data = response.data[0]
-
-    # Пробуем получить URL
-    image_url = getattr(data, 'url', None)
-    if image_url:
-        # Скачиваем по URL
-        try:
-            resp = requests.get(image_url, timeout=30)
-            resp.raise_for_status()
-            img_data = resp.content
-        except Exception as e:
-            raise RuntimeError(f"Не удалось скачать картинку по URL: {e}")
-    else:
-        # Если URL нет, пробуем получить base64
-        b64 = getattr(data, 'b64_json', None)
-        if b64:
-            try:
-                img_data = base64.b64decode(b64)
-            except Exception as e:
-                raise RuntimeError(f"Не удалось декодировать base64: {e}")
-        else:
-            # Если нет ни url, ни b64_json – выводим содержимое ответа для отладки
-            raise RuntimeError(f"Неизвестный формат ответа: {data}")
-
-    # Сохраняем изображение
     try:
-        image = Image.open(BytesIO(img_data))
+        # Сохраняем на диск через PIL для проверки целостности
+        image = Image.open(BytesIO(image_data))
         image.save(output_path)
     except Exception as e:
-        raise RuntimeError(f"Ошибка сохранения: {e}")
+        raise RuntimeError(f"Ошибка сохранения изображения: {e}")
 
     return output_path
