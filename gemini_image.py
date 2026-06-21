@@ -21,7 +21,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
     }
 
     # 2. Формируем промт с вашими стилями
-    style = "character from Naruto anime, full body shot, anime style, gouache painting, rich paint strokes, vibrant colors, artistic canvas art, well proportioned anatomy, masterpiece, high quality"
+    style = "full body shot, anime style, gouache painting, rich paint strokes, vibrant colors, artistic canvas art, well proportioned anatomy, masterpiece, high quality"
     negative = "giant head, big head, disproportionate body, close-up, cropped, portrait, avoiding 3d render, photorealism, real life photo, blurry background, low quality, text, watermark"
     final_prompt = f"{prompt}, {style}. Negative: {negative}"
 
