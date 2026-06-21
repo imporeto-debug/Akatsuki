@@ -56,8 +56,8 @@ DEEPSEEK_MODEL      = CONFIG["deepseek"]["model"]
 HOLIDAYS_ENABLED = CONFIG.get("holidays", {}).get("enabled", True)
 HOLIDAYS_LIST = CONFIG.get("holidays", {}).get("list", [])
 RANDOM_HOLIDAYS_ENABLED = CONFIG.get("random_holidays", {}).get("enabled", True)
-RANDOM_HOLIDAYS_DAYS_PER_WEEK = CONFIG.get("random_holidays", {}).get("days_per_week", 2)
-RANDOM_HOLIDAYS_COMMENT_CHANCE = CONFIG.get("random_holidays", {}).get("commentary_chance_if_no_holiday", 0.2)
+RANDOM_HOLIDAYS_DAYS_PER_WEEK = CONFIG.get("random_holidays", {}).get("days_per_week", 4)
+RANDOM_HOLIDAYS_COMMENT_CHANCE = CONFIG.get("random_holidays", {}).get("commentary_chance_if_no_holiday", 0.4)
 
 random_holiday_weekdays = []
 last_random_holiday_date = None
