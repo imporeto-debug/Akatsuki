@@ -303,6 +303,21 @@ def detect_character(text: str):
             return key
     return None
 
+# ====================== ОБНАРУЖЕНИЕ ГРУППОВЫХ ОБРАЩЕНИЙ ======================
+def detect_group_call(text: str):
+    """Проверяет наличие групповых обращений: мальчики, ребята, коноха, зайки и их формы"""
+    text = text.lower()
+    patterns = [
+        r'\b(мальчик(и|ов|ам|ами|ах)?)\b',
+        r'\b(ребят[ау]?|ребята|ребятки)\b',
+        r'\bконоха\b',
+        r'\bзайк(и|ам|ами|ах)?\b'
+    ]
+    for pattern in patterns:
+        if re.search(pattern, text, re.IGNORECASE):
+            return True
+    return False
+
 # ====================== ИСПРАВЛЕННЫЙ ПОИСК МУЖЕЙ (ТОЛЬКО ПОЛНЫЕ СЛОВА) ======================
 def detect_user_husbands(uid):
     uid = str(uid)
@@ -802,11 +817,14 @@ async def on_message(message):
                       isinstance(message.reference.resolved, discord.Message) and
                       message.reference.resolved.author.id == bot.user.id)
     has_name = detect_character(message.content)
-    reply_needed = (mentioned or replied_to_bot or has_name or random.randint(1, 100) <= RESPONSE_CHANCE)
+    has_group_call = detect_group_call(message.content)   # <-- НОВАЯ ПРОВЕРКА
+
+    reply_needed = (mentioned or replied_to_bot or has_name or has_group_call or random.randint(1, 100) <= RESPONSE_CHANCE)
     if not reply_needed:
         await bot.process_commands(message)
         return
 
+    # ========== ОПРЕДЕЛЕНИЕ ОТВЕЧАЮЩИХ ==========
     user_husbands = detect_user_husbands(message.author.id)
     wife_character = None
     for husband in user_husbands:
@@ -820,7 +838,13 @@ async def on_message(message):
         interrupted = False
         original_target = None
     else:
-        responder, interrupted, original_target = choose_responder(message.content)
+        # Если есть групповое обращение, выбираем случайного персонажа
+        if has_group_call:
+            responder = random.choice(list(AKATSUKI_MEMBERS.keys()))
+            interrupted = False
+            original_target = None
+        else:
+            responder, interrupted, original_target = choose_responder(message.content)
 
     responders = (build_multi_character_list(responder) if random.randint(1, 100) <= MULTI_REPLY_CHANCE else [responder])
     if wife_character and wife_character not in responders:
@@ -844,19 +868,21 @@ async def on_message(message):
     if extra_context:
         extra_context += "Если спрашивают про жену — отвечай про свою.\n"
 
-    # ===== ИСПРАВЛЕННЫЙ БЛОК СТАТУСА СОБЕСЕДНИЦЫ =====
     for resp_char in responders:
         char_name_temp = AKATSUKI_MEMBERS[resp_char]['name']
         if resp_char in user_husbands:
             extra_context += f"{char_name_temp} знает — его жена пишет.\n"
         else:
             extra_context += f"{char_name_temp} знает — это женщина, НЕ его жена. Не называй её женой.\n"
-    # убираем общую фразу "Это жена ..."
 
     if interrupted and original_target:
         extra_context += f"{AKATSUKI_MEMBERS[responder]['name']} отвечает вместо {AKATSUKI_MEMBERS[original_target]['name']}\n"
     if len(responders) >= 2:
         extra_context += "Могут перебивать, спорить, язвить.\n"
+
+    # Если было групповое обращение, добавляем пометку
+    if has_group_call:
+        extra_context += "⚠️ Сообщение содержало групповое обращение (мальчики, ребята, коноха, зайки). Отвечай как от лица группы, но говори только за себя (и других, если нужно).\n"
 
     history = conversation_history.get(message.channel.id, [])[-MAX_HISTORY_MESSAGES:]
 
