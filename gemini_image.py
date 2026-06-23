@@ -24,7 +24,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
     final_prompt = f"Draw exactly this: {prompt}. {style}"
 
     # ---------- ПАРАМЕТРЫ ----------
-    model = os.getenv("ONLYSQ_IMAGE_MODEL", "flux-2-max")
+    model = os.getenv("ONLYSQ_IMAGE_MODEL", "flux-2-dev")
     ratio = os.getenv("ONLYSQ_IMAGE_RATIO", "2:3")  # вертикальный для персонажей
 
     payload = {
