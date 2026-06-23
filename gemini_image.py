@@ -20,7 +20,7 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
     final_prompt = f"Draw exactly this: {prompt}. {style}"
 
     # ---------- ПАРАМЕТРЫ (из переменных окружения) ----------
-    model = os.getenv("ONLYSQ_IMAGE_MODEL", "nano-banana-2")  # <-- заменено на banana-2
+    model = os.getenv("ONLYSQ_IMAGE_MODEL", "stable-diffusion-xl-base-1.0")
     ratio = os.getenv("ONLYSQ_IMAGE_RATIO", "1:1")
 
     payload = {
