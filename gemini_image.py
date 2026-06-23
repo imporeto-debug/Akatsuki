@@ -16,15 +16,16 @@ def generate_image(prompt: str, output_path: str = "generated_image.png") -> str
     }
 
     # ---------- ВАШ ПОЛНЫЙ СТИЛЬ (без негатива) ----------
-    # Я убрал только "No People in the background", остальное оставил
-    style = "full body shot, cinematic lighting, high quality, ultra UHD, realistic, intense, enhanced contrast, highly detailed skin detailed character design concept art, highly detailed image, realistic anatomy, perfectly realistic hands, realistic leg length, correct number of fingers, five fingers, perfectly proportioned limbs, natural poses, accurate human anatomy, no extra fingers, no extra limbs"
-
+    style = "full body shot, anime style, gouache painting, rich paint strokes, vibrant colors, artistic canvas art, well proportioned anatomy, masterpiece, high quality"
+    negative = "giant head, big head, disproportionate body, close-up, cropped, portrait, avoiding 3d render, photorealism, real life photo, blurry background, low quality, text, watermark"
+    final_prompt = f"{prompt}, {style}. Negative: {negative}"
+    
     # ---------- ФОРМИРУЕМ ПРОМТ: СНАЧАЛА ЗАПРОС ПОЛЬЗОВАТЕЛЯ ----------
     # Добавляем команду "Draw exactly this:" чтобы модель точно поняла, что рисовать
     final_prompt = f"Draw exactly this: {prompt}. {style}"
 
     # ---------- ПАРАМЕТРЫ ----------
-    model = os.getenv("ONLYSQ_IMAGE_MODEL", "flux")
+    model = os.getenv("ONLYSQ_IMAGE_MODEL", "nano-banana-pro")
     ratio = os.getenv("ONLYSQ_IMAGE_RATIO", "2:3")  # вертикальный для персонажей
 
     payload = {
