@@ -26,7 +26,7 @@
   "users_file": "users.json",
   "character_prompts_file": "character_prompts.json",
   "deepseek": {
-    "url": "https://ministry-pound-bikes-thriller.trycloudflare.com/proxy/deepseek/chat/completions",
+    "url": "https://males-coverage-specialist-explore.trycloudflare.com/proxy/deepseek/chat/completions",
     "model": "deepseek-v4-pro"
   },
   "holidays": {
