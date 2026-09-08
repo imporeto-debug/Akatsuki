@@ -729,7 +729,7 @@ async def random_banter_loop():
 async def birthday_check_loop():
     await bot.wait_until_ready()
     now = now_msk()
-    if now.hour == 9 and now.minute == 0:
+    if now.hour == 11 and now.minute == 20:
         fixed = get_today_fixed_holiday()
         if fixed:
             await send_holiday_greeting(fixed)
