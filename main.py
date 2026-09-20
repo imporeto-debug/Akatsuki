@@ -442,7 +442,7 @@ def is_valid_dialogue(text: str) -> bool:
         return False
     return True
 
-async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3, skip_validation=False):
+async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=1.2, retries=3, skip_validation=False):
     global last_request_time, http_session
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
