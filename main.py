@@ -463,12 +463,12 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=1.2
             http_session = aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(limit=1))
 
         for attempt in range(retries):
-            current_temp = temperature if attempt == 0 else 0.7
+            current_temp = temperature if attempt == 0 else 1.1
             payload = {
                 "model": DEEPSEEK_MODEL,
                 "messages": messages,
                 "temperature": current_temp,
-                "top_p": 0.9,
+                "top_p": 0.6,
                 "max_tokens": max_tokens,
                 "stream": False,
             }
