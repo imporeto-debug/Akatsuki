@@ -118,6 +118,19 @@ AKATSUKI_MEMBERS = {
     },
 }
 
+# ========================= ДНИ РОЖДЕНИЯ ПЕРСОНАЖЕЙ =========================
+
+CHARACTER_BIRTHDAYS = {
+    "itachi":  "09-06",   # 9 июня
+    "kisame":  "18-03",   # 18 марта
+    "deidara": "05-05",   # 5 мая
+    "sasori":  "08-11",   # 8 ноября
+    "hidan":   "02-04",   # 2 апреля
+    "kakuzu":  "15-08",   # 15 августа
+    "sasuke":  "23-07",   # 23 июля
+    "tobi":    "10-02",   # 10 февраля
+}
+
 # ========================= SYSTEM PROMPT =========================
 
 BASE_SYSTEM_PROMPT = """
@@ -705,6 +718,53 @@ async def send_birthday_message(uid, data):
         if response:
             await channel.send(f"🎂 {name}\n{response}")
 
+# ========================= ПОЗДРАВЛЕНИЕ ПЕРСОНАЖЕЙ С ДНЁМ РОЖДЕНИЯ =========================
+
+async def send_character_birthday(character_id: str):
+    channel = bot.get_channel(MAIN_CHANNEL_ID)
+    if not channel:
+        return
+
+    birthday_char_name = AKATSUKI_MEMBERS[character_id]["name"]
+    
+    # Берём 2–4 других персонажа (без именинника)
+    available = [c for c in AKATSUKI_MEMBERS if c != character_id]
+    participants = random.sample(available, random.randint(2, min(4, len(available))))
+    
+    # Иногда добавляем самого именинника (чтобы он ответил)
+    if random.random() < 0.7:
+        participants.append(character_id)
+        random.shuffle(participants)
+
+    participant_names = format_character_names(participants)
+    character_prompt = build_character_prompt(participants)
+
+    prompt = [
+        {
+            "role": "system",
+            "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Сегодня день рождения {birthday_char_name}!\n"
+                f"Участники: {participant_names}\n\n"
+                f"Сгенерируй живой диалог, где персонажи поздравляют {birthday_char_name} с днём рождения.\n"
+                f"- Кто-то искренне, кто-то саркастично, кто-то с издёвкой (в характере).\n"
+                f"- Сам {birthday_char_name} тоже может ответить (если он в списке).\n"
+                f"- Диалог должен быть естественным и хаотичным.\n"
+                f"ФОРМАТ: **Имя**: текст\n"
+                f"8–14 сообщений."
+            )
+        }
+    ]
+
+    response = await ask_deepseek(prompt)
+    if response:
+        response = strip_reasoning(response)
+        if response:
+            await channel.send(f"🎂 Сегодня день рождения **{birthday_char_name}**! 🎂\n{response}")
+
 # ========================= ИНИЦИАЛИЗАЦИЯ СЛУЧАЙНЫХ ДНЕЙ =========================
 
 def init_random_holidays():
@@ -729,17 +789,31 @@ async def random_banter_loop():
 async def birthday_check_loop():
     await bot.wait_until_ready()
     now = now_msk()
-    if now.hour == 11 and now.minute == 20:
-        fixed = get_today_fixed_holiday()
-        if fixed:
-            await send_holiday_greeting(fixed)
-        if RANDOM_HOLIDAYS_ENABLED:
-            await random_holiday_check()
-        for uid, data in users_memory.items():
-            if not data.get("wife") or not data.get("birthday"):
-                continue
-            if is_today_birthday(data["birthday"], now):
-                await send_birthday_message(uid, data)
+
+    # Проверяем только в 11:20 по Москве
+    if not (now.hour == 11 and now.minute == 20):
+        return
+
+    # 1. Фиксированные праздники
+    fixed = get_today_fixed_holiday()
+    if fixed:
+        await send_holiday_greeting(fixed)
+
+    # 2. Случайные праздники
+    if RANDOM_HOLIDAYS_ENABLED:
+        await random_holiday_check()
+
+    # 3. Дни рождения жён (пользователей)
+    for uid, data in users_memory.items():
+        if not data.get("wife") or not data.get("birthday"):
+            continue
+        if is_today_birthday(data["birthday"], now):
+            await send_birthday_message(uid, data)
+
+    # 4. Дни рождения персонажей Акацуки
+    for char_id, bday in CHARACTER_BIRTHDAYS.items():
+        if is_today_birthday(bday, now):
+            await send_character_birthday(char_id)
 
 @tasks.loop(hours=EMOJI_REFRESH_HOURS)
 async def refresh_emojis_task():
@@ -777,32 +851,22 @@ async def reload_prompts(ctx):
 # ========================= НОВАЯ КОМАНДА ДЛЯ ГЕНЕРАЦИИ ИЗОБРАЖЕНИЙ =========================
 
 @bot.command(name='нарисуй')
-@commands.cooldown(1, 30, commands.BucketType.user)  # защита от спама – 1 раз в 30 секунд на пользователя
+@commands.cooldown(1, 30, commands.BucketType.user)
 async def generate_image_command(ctx, *, prompt: str = None):
-    """
-    Генерирует изображение по текстовому запросу через RiftAI.
-    Использование: !нарисуй [описание]
-    """
     if not prompt:
         await ctx.send("❌ Укажите, что нарисовать. Пример: `!нарисуй котик в космосе`")
         return
 
-    # Сообщение о начале генерации
     waiting = await ctx.send(f"🎨 Генерирую: *\"{prompt}\"*...")
     filename = None
 
     try:
-        # Уникальное имя файла (чтобы не пересекаться при параллельных запросах)
         filename = f"gen_{ctx.author.id}_{int(datetime.now().timestamp())}.png"
-
-        # Генерация в отдельном потоке (функция синхронная, использует requests)
         await asyncio.to_thread(generate_image, prompt, filename)
 
-        # Проверяем, что файл действительно создался
         if not os.path.exists(filename):
             raise RuntimeError("Файл не был создан после генерации")
 
-        # Отправляем картинку в чат
         with open(filename, "rb") as f:
             file = discord.File(f, filename="result.png")
             await ctx.send(f"✨ Готово, {ctx.author.mention}:", file=file)
@@ -810,7 +874,6 @@ async def generate_image_command(ctx, *, prompt: str = None):
     except Exception as e:
         await ctx.send(f"❌ Ошибка при генерации: {e}")
     finally:
-        # Удаляем временный файл даже при ошибке
         if filename and os.path.exists(filename):
             os.remove(filename)
         await waiting.delete()
