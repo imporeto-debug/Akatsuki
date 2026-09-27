@@ -65,6 +65,17 @@ RANDOM_HOLIDAYS_COMMENT_CHANCE = CONFIG.get("random_holidays", {}).get("commenta
 random_holiday_weekdays = []
 last_random_holiday_date = None
 
+# Ограничение случайных бантеров
+banter_count_today = 0
+last_banter_date = None
+last_banter_time = None
+
+# Максимум случайных бантеров в сутки
+MAX_BANTERS_PER_DAY = 2
+
+# Минимальный промежуток между случайными бантерaми
+MIN_BANTER_INTERVAL_HOURS = 4
+
 # ========================= CHARACTERS =========================
 
 AKATSUKI_MEMBERS = {
@@ -780,10 +791,36 @@ def init_random_holidays():
 
 @tasks.loop(minutes=15)
 async def random_banter_loop():
+    global banter_count_today, last_banter_date, last_banter_time
+
     await bot.wait_until_ready()
     now = now_msk()
-    if now.hour in [11, 16, 19, 23] and random.random() < 0.28:
+
+    # Новый день — сбрасываем счётчик
+    if last_banter_date != now.date():
+        last_banter_date = now.date()
+        banter_count_today = 0
+        last_banter_time = None
+
+    # Максимум 2 случайных бантерa в сутки
+    if banter_count_today >= MAX_BANTERS_PER_DAY:
+        return
+
+    # Проверяем только заданные часы
+    if now.hour not in [11, 16, 19, 23]:
+        return
+
+    # Не чаще одного бантерa за 4 часа
+    if last_banter_time is not None:
+        hours_since_last = (now - last_banter_time).total_seconds() / 3600
+        if hours_since_last < MIN_BANTER_INTERVAL_HOURS:
+            return
+
+    # Шанс запуска
+    if random.random() < 0.28:
         await send_akatsuki_banter()
+        banter_count_today += 1
+        last_banter_time = now
 
 @tasks.loop(minutes=1)
 async def birthday_check_loop():
