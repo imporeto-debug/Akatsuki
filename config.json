@@ -26,8 +26,8 @@
   "users_file": "users.json",
   "character_prompts_file": "character_prompts.json",
   "deepseek": {
-    "url": "https://strong-bones-vanilla-blackjack.trycloudflare.com/proxy/deepseek/chat/completions",
-    "model": "deepseek-v4-pro"
+    "url": "https://api.reformboss.com/v1/chat/completions",
+    "model": "deepseek-v4.1-flash-1017"
   },
   "holidays": {
     "enabled": true,
