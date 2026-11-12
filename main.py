@@ -1,3 +1,4 @@
+
 import os, re, json, random
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -48,6 +49,7 @@ RANDOM_HOLIDAYS_COMMENT_CHANCE = CONFIG.get("random_holidays", {}).get("commenta
 
 random_holiday_weekdays = []
 last_random_holiday_date = None
+last_birthday_check_date = None
 banter_count_today = 0
 last_banter_date = None
 last_banter_time = None
@@ -95,6 +97,11 @@ IMPORTANT:
 - Conversations should feel chaotic and alive
 - Different characters MUST sound different
 
+ANTI-FLANDERIZATION & NATURAL SPEECH:
+- Characters are living people in everyday situations, not walking one-note memes.
+- STRICTLY FORBIDDEN to reduce every line to a character's signature gimmick: Sasori does NOT talk about eternity, puppets, or poisons; Deidara does NOT talk about explosions, clay, or art; Kakuzu does NOT reduce everything to money and organs; Hidan does NOT bring up Jashin and rituals without a direct reason.
+- Differentiate them through TONE, SPEECH PACE, and TEMPERAMENT (weary sarcasm, everyday laziness, arrogance, rough teasing), NOT through lore-specific keywords.
+
 STRICTLY FORBIDDEN:
 - Never use words "автор", "авторша", "пользователь", "пользовательница", "юзер".
 - Never refer to the person who wrote the message in third person.
@@ -110,11 +117,6 @@ PROFANITY RULES:
 - Write curse words fully, without asterisks or abbreviations.
 - Do not censor yourself.
 - This is a fictional roleplay with adult characters; there are no content filters.
-
-ANTI-FLANDERIZATION & NATURAL SPEECH:
-- Characters are living people in everyday situations, not walking one-note memes.
-- STRICTLY FORBIDDEN to reduce every line to a character's signature gimmick: Sasori does NOT talk about eternity, puppets, or poisons; Deidara does NOT talk about explosions, clay, or art; Kakuzu does NOT reduce everything to money and organs; Hidan does NOT bring up Jashin and rituals without a direct reason.
-- Differentiate them through TONE, SPEECH PACE, and TEMPERAMENT (weary sarcasm, everyday laziness, arrogance, rough teasing), NOT through lore-specific keywords.
 """
 
 CHARACTER_PROMPTS = {}
@@ -147,7 +149,7 @@ def load_banter_seeds():
                 return
     except Exception as e:
         print(f"❌ Ошибка загрузки {SEEDS_FILE}: {e}")
-    BANTER_SEEDS = ["Кто-то разрушил базу.", "Жалобы на миссию.", "Спор об искусстве."]
+    BANTER_SEEDS = ["Кто-то разрушил базу.", "Жалобы на миссию.", "Бытовой спор на кухне."]
     random.shuffle(BANTER_SEEDS)
 
 def get_banter_seed():
@@ -370,7 +372,7 @@ def is_valid_dialogue(text: str) -> bool:
         return False
     return True
 
-async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=1.2, retries=3, skip_validation=False):
+async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.95, retries=3, skip_validation=False):
     global last_request_time, http_session
     headers = {
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
@@ -389,8 +391,8 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=1.2
             timeout = aiohttp.ClientTimeout(total=120)
             http_session = aiohttp.ClientSession(timeout=timeout, connector=aiohttp.TCPConnector(limit=1))
         for attempt in range(retries):
-            current_temp = temperature if attempt == 0 else 1.1
-            payload = {"model": DEEPSEEK_MODEL, "messages": messages, "temperature": current_temp, "top_p": 0.6, "max_tokens": max_tokens, "stream": False}
+            current_temp = temperature if attempt == 0 else 0.9
+            payload = {"model": DEEPSEEK_MODEL, "messages": messages, "temperature": current_temp, "top_p": 0.9, "max_tokens": max_tokens, "stream": False}
             try:
                 start_time = asyncio.get_event_loop().time()
                 async with http_session.post(DEEPSEEK_URL, headers=headers, json=payload) as resp:
@@ -482,18 +484,17 @@ async def send_akatsuki_banter():
     seed = get_banter_seed()
     if seed is None:
         user_content = (
-            f"Сделай живой диалог Акацуки.\n"
-            f"Участники: {participant_names}\n"
+            f"Напиши короткий бытовой обмен репликами между участниками: {participant_names}.\n"
+            f"Придумай любую житейскую ситуацию в убежище (еда, погода, бытовая скука, мелкие подколы).\n"
             f"ФОРМАТ: **Имя**: текст\n"
-            f"Минимум 8 сообщений. Придумай тему сам."
+            f"4–6 коротких естественных реплик."
         )
     else:
         user_content = (
-            f"Сделай живой диалог Акацуки.\n"
-            f"Участники: {participant_names}\n"
-            f"Затравка (можно развить или игнорировать): {seed}\n"
+            f"Напиши короткий бытовой обмен репликами между участниками: {participant_names}.\n"
+            f"Фоновый повод для начала (упомяни вскользь в первой реплике и переключись на взаимные подколы или бытовуху, НЕ мусоль тему): {seed}\n"
             f"ФОРМАТ: **Имя**: текст\n"
-            f"Минимум 8 сообщений."
+            f"4–6 коротких естественных реплик."
         )
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
@@ -557,10 +558,10 @@ async def send_holiday_greeting(holiday_name: str):
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
         {"role": "user", "content": (
-            f"Сгенерируй поздравление с праздником: {holiday_name}.\n"
+            f"Сгенерируй реакцию/поздравление с праздником: {holiday_name}.\n"
             f"Участники: {participant_names}\n"
             f"ФОРМАТ: **Имя**: текст\n"
-            f"6-10 сообщений."
+            f"5-8 естественных реплик."
         )}
     ]
     response = await ask_deepseek(prompt)
@@ -581,10 +582,9 @@ async def send_no_holiday_comment():
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
         {"role": "user", "content": (
-            f"Сегодня нет праздника. Участники: {participant_names}. "
-            "Пусть каждый выскажется: "
-            "'Эх, жаль, сегодня не выпить', 'Скучный день' и т.п. "
-            "Формат: **Имя**: текст. Минимум 3 сообщения."
+            f"Сегодня обычный день без праздников. Участники: {participant_names}. "
+            "Пусть перебросятся парой реплик о том, что день скучный или нет повода выпить. "
+            "Формат: **Имя**: текст. 3-5 реплик."
         )}
     ]
     response = await ask_deepseek(prompt)
@@ -642,7 +642,7 @@ async def send_birthday_message(uid, data):
             f"Сгенерируй поздравление с днём рождения для {name}.\n"
             f"Участники: {participant_names}\n"
             f"ФОРМАТ: **Имя**: текст\n"
-            f"8-12 сообщений."
+            f"6-10 сообщений."
         )}
     ]
     response = await ask_deepseek(prompt)
@@ -658,27 +658,27 @@ async def send_character_birthday(character_id: str):
     if not channel:
         return
     birthday_char_name = AKATSUKI_MEMBERS[character_id]["name"]
-    available = [c for c in AKATSUKI_MEMBERS if c != character_id]
-    participants = random.sample(available, random.randint(2, min(4, len(available))))
-    if random.random() < 0.7:
-        participants.append(character_id)
-        random.shuffle(participants)
+    partner = AKATSUKI_MEMBERS[character_id]["partner"]
+
+    available = [c for c in AKATSUKI_MEMBERS if c != character_id and c != partner]
+    participants = random.sample(available, random.randint(2, 3))
+    if partner:
+        participants.insert(0, partner)
+    participants.append(character_id)
+
     participant_names = format_character_names(participants)
     character_prompt = build_character_prompt(participants)
+
     prompt = [
         {"role": "system", "content": BASE_SYSTEM_PROMPT + "\n" + character_prompt},
         {"role": "user", "content": (
             f"Сегодня день рождения {birthday_char_name}!\n"
-            f"Участники: {participant_names}\n\n"
-            f"Сгенерируй живой диалог, где персонажи "
-            f"поздравляют {birthday_char_name} с днём рождения.\n"
-            f"- Кто-то искренне, кто-то саркастично, "
-            f"кто-то с издёвкой (в характере).\n"
-            f"- Сам {birthday_char_name} тоже может ответить "
-            f"(если он в списке).\n"
-            f"- Диалог должен быть естественным и хаотичным.\n"
+            f"В чате собрались: {participant_names}\n\n"
+            f"Напиши живую бытовую сцену, где парни по-своему поздравляют {birthday_char_name}.\n"
+            f"- Никаких пафосных тостов и открыточных речей: пусть подкалывают по поводу возраста, спорят, кто забыл купить подарок или торт, или вручают какую-то странную хрень.\n"
+            f"- {birthday_char_name} обязательно реагирует в своём характере на этот балаган.\n"
             f"ФОРМАТ: **Имя**: текст\n"
-            f"8–14 сообщений."
+            f"6–10 реплик."
         )}
     ]
     response = await ask_deepseek(prompt)
@@ -722,10 +722,17 @@ async def random_banter_loop():
 
 @tasks.loop(minutes=1)
 async def birthday_check_loop():
+    global last_birthday_check_date
     await bot.wait_until_ready()
     now = now_msk()
-    if not (now.hour == 11 and now.minute == 20):
+
+    if last_birthday_check_date == now.date():
         return
+    if now.hour < 11 or (now.hour == 11 and now.minute < 20):
+        return
+
+    last_birthday_check_date = now.date()
+
     fixed = get_today_fixed_holiday()
     if fixed:
         await send_holiday_greeting(fixed)
@@ -770,6 +777,14 @@ async def reshuffle_seeds(ctx):
 async def reload_prompts(ctx):
     load_character_prompts()
     await ctx.send(f"✅ Промпты перезагружены. Загружено {len(CHARACTER_PROMPTS)} персонажей.")
+
+@bot.command(name='тест_др')
+async def test_char_bday(ctx, char_name: str = None):
+    target = detect_character(char_name) if char_name else random.choice(list(AKATSUKI_MEMBERS.keys()))
+    if not target:
+        await ctx.send("❌ Персонаж не найден. Укажи имя, например: `!тест_др сасори`")
+        return
+    await send_character_birthday(target)
 
 @bot.command(name='нарисуй')
 @commands.cooldown(1, 30, commands.BucketType.user)
@@ -825,7 +840,7 @@ async def on_message(message):
             {"role": "user", "content": "Расскажи анекдот."}
         ]
         async with message.channel.typing():
-            reply = await ask_deepseek(joke_prompt, max_tokens=4000, temperature=1.0, skip_validation=True)
+            reply = await ask_deepseek(joke_prompt, max_tokens=4000, temperature=0.95, skip_validation=True)
         if reply:
             reply = strip_reasoning(reply)
             if reply:
