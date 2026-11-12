@@ -28,7 +28,7 @@
   "secrets_file": "secrets.json",
   "deepseek": {
     "url": "https://api.reformboss.com/v1/chat/completions",
-    "model": "deepseek-v4.1-flash-1017"
+    "model": "glm-5.3"
   },
   "holidays": {
     "enabled": true,
