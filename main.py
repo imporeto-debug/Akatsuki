@@ -23,18 +23,33 @@ def load_secrets():
     if os.path.exists(SECRETS_FILE):
         try:
             with open(SECRETS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                print(f"✅ Файл {SECRETS_FILE} найден. Ключи внутри: {list(data.keys())}")
+                return data
         except Exception as e:
-            print(f"❌ Ошибка чтения {SECRETS_FILE}: {e}")
+            print(f"❌ Ошибка чтения {SECRETS_FILE} (проверь кавычки и скобки!): {e}")
+    else:
+        print(f"⚠️ Файл {SECRETS_FILE} НЕ найден в папке {os.getcwd()}. Файлы рядом: {os.listdir('.')}")
     return {}
 
 SECRETS = load_secrets()
 
-DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-DEEPSEEK_API_KEY = SECRETS.get("proxy_token") or os.getenv("DEEPSEEK_API_KEY")
+DISCORD_TOKEN = (
+    os.getenv("DISCORD_TOKEN")
+    or SECRETS.get("discord_token")
+    or SECRETS.get("DISCORD_TOKEN")
+)
+DEEPSEEK_API_KEY = (
+    SECRETS.get("proxy_token")
+    or SECRETS.get("deepseek_api_key")
+    or SECRETS.get("DEEPSEEK_API_KEY")
+    or os.getenv("DEEPSEEK_API_KEY")
+)
 
-if not DISCORD_TOKEN or not DEEPSEEK_API_KEY:
-    raise RuntimeError("Missing DISCORD_TOKEN or DEEPSEEK_API_KEY")
+if not DISCORD_TOKEN:
+    raise RuntimeError("❌ Не найден DISCORD_TOKEN (проверь переменные окружения на Bothost или добавь его в secrets.json)")
+if not DEEPSEEK_API_KEY:
+    raise RuntimeError("❌ Не найден DEEPSEEK_API_KEY / proxy_token (проверь файл secrets.json на Bothost)")
 
 MSK = ZoneInfo("Europe/Moscow")
 MAX_RESPONSE_TOKENS = CONFIG["response"]["max_response_tokens"]
