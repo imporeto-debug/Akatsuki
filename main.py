@@ -16,40 +16,10 @@ def load_config():
         raise RuntimeError("Не удалось загрузить конфигурацию")
 
 CONFIG = load_config()
-
-SECRETS_FILE = CONFIG.get("secrets_file", "secrets.json")
-
-def load_secrets():
-    if os.path.exists(SECRETS_FILE):
-        try:
-            with open(SECRETS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                print(f"✅ Файл {SECRETS_FILE} найден. Ключи внутри: {list(data.keys())}")
-                return data
-        except Exception as e:
-            print(f"❌ Ошибка чтения {SECRETS_FILE} (проверь кавычки и скобки!): {e}")
-    else:
-        print(f"⚠️ Файл {SECRETS_FILE} НЕ найден в папке {os.getcwd()}. Файлы рядом: {os.listdir('.')}")
-    return {}
-
-SECRETS = load_secrets()
-
-DISCORD_TOKEN = (
-    os.getenv("DISCORD_TOKEN")
-    or SECRETS.get("discord_token")
-    or SECRETS.get("DISCORD_TOKEN")
-)
-DEEPSEEK_API_KEY = (
-    SECRETS.get("proxy_token")
-    or SECRETS.get("deepseek_api_key")
-    or SECRETS.get("DEEPSEEK_API_KEY")
-    or os.getenv("DEEPSEEK_API_KEY")
-)
-
-if not DISCORD_TOKEN:
-    raise RuntimeError("❌ Не найден DISCORD_TOKEN (проверь переменные окружения на Bothost или добавь его в secrets.json)")
-if not DEEPSEEK_API_KEY:
-    raise RuntimeError("❌ Не найден DEEPSEEK_API_KEY / proxy_token (проверь файл secrets.json на Bothost)")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DISCORD_TOKEN or not DEEPSEEK_API_KEY:
+    raise RuntimeError("Missing DISCORD_TOKEN or DEEPSEEK_API_KEY")
 
 MSK = ZoneInfo("Europe/Moscow")
 MAX_RESPONSE_TOKENS = CONFIG["response"]["max_response_tokens"]
@@ -113,9 +83,12 @@ IMPORTANT:
 CRITICAL FORMAT:
 **Имя**: текст
 
-NO narration.
-NO quotes.
-Only dialogue.
+Rules for formatting:
+- Each character's turn MUST start on a NEW line.
+- NEVER write two replies from the same character in a row. Combine a single character's thoughts into one line under one **Имя**: prefix.
+- NO narration.
+- NO quotes.
+- Only dialogue.
 
 IMPORTANT:
 - Characters may interrupt each other
@@ -465,8 +438,15 @@ async def ask_deepseek(messages, max_tokens=MAX_RESPONSE_TOKENS, temperature=0.9
 def fix_bad_format(text: str, default_name: str) -> str:
     if not text:
         return text
+
+    # Разлепляем реплики, если ИИ написал второе имя в ту же строчку без переноса
+    all_names = [cdata["name"] for cdata in AKATSUKI_MEMBERS.values()]
+    names_pattern = "|".join(re.escape(n) for n in all_names)
+    text = re.sub(rf'(?<!^)(?<!\n)\s*(\*\*(?:{names_pattern})\*\*\s*:\s*|(?:{names_pattern})\s*:\s*)', r'\n\1', text)
+
     lines = text.split('\n')
-    cleaned_lines = []
+    merged_turns = []
+
     for line in lines:
         line = line.strip()
         if not line:
@@ -475,27 +455,50 @@ def fix_bad_format(text: str, default_name: str) -> str:
             continue
         if (line.lower().startswith('я думаю') or line.lower().startswith('наверное') or line.lower().startswith('возможно')):
             continue
-        cleaned_lines.append(line)
-    text = '\n'.join(cleaned_lines)
-    if text.startswith('**:'):
-        text = f"**{default_name}**{text[2:]}"
-    match = re.match(r'^\*\*([^*]+)\*\*(?!:)', text)
-    if match:
-        name = match.group(1)
-        rest = text[len(match.group(0)):]
-        text = f"**{name}**:{rest}"
-    match = re.match(r'^([А-ЯЁа-яё]+):\s*(.*)', text)
-    if match:
-        name = match.group(1)
-        full_name = name
-        for cid, cdata in AKATSUKI_MEMBERS.items():
-            if cdata['name'].lower() == name.lower():
-                full_name = cdata['name']
-                break
-        rest = match.group(2)
-        text = f"**{full_name}**: {rest}"
-    if not text.startswith('**'):
-        text = f"**{default_name}**: {text}"
+
+        if line.startswith('**:'):
+            line = f"**{default_name}**{line[2:]}"
+        match_bold_no_colon = re.match(r'^\*\*([^*]+)\*\*(?!:)\s*(.*)', line)
+        if match_bold_no_colon:
+            line = f"**{match_bold_no_colon.group(1)}**: {match_bold_no_colon.group(2)}"
+
+        speaker = None
+        content = line
+
+        m_bold = re.match(r'^\*\*([^*]+)\*\*\s*:\s*(.*)', line)
+        m_plain = re.match(r'^([А-ЯЁа-яё]+)\s*:\s*(.*)', line)
+
+        if m_bold:
+            raw_name, content = m_bold.group(1).strip(), m_bold.group(2).strip()
+            speaker = raw_name
+            for cid, cdata in AKATSUKI_MEMBERS.items():
+                if cdata['name'].lower() == raw_name.lower():
+                    speaker = cdata['name']
+                    break
+        elif m_plain:
+            raw_name, content = m_plain.group(1).strip(), m_plain.group(2).strip()
+            for cid, cdata in AKATSUKI_MEMBERS.items():
+                if cdata['name'].lower() == raw_name.lower():
+                    speaker = cdata['name']
+                    break
+
+        if speaker:
+            # Если тот же самый персонаж пишет вторую реплику подряд — склеиваем в одну!
+            if merged_turns and merged_turns[-1][0] == speaker:
+                if content:
+                    merged_turns[-1][1] = f"{merged_turns[-1][1]} {content}".strip()
+            else:
+                merged_turns.append([speaker, content])
+        else:
+            if merged_turns:
+                merged_turns[-1][1] = f"{merged_turns[-1][1]} {content}".strip()
+            else:
+                merged_turns.append([default_name, content])
+
+    text = '\n'.join(f"**{sp}**: {cnt}" for sp, cnt in merged_turns if cnt)
+    if not text:
+        text = f"**{default_name}**: ..."
+
     text = re.sub(r'\bавторш[ауеиы]\b', 'ты', text, flags=re.IGNORECASE)
     text = re.sub(r'\bавтор\b', 'ты', text, flags=re.IGNORECASE)
     text = re.sub(r'\bпользователь\b', 'ты', text, flags=re.IGNORECASE)
@@ -515,14 +518,14 @@ async def send_akatsuki_banter():
         user_content = (
             f"Напиши короткий бытовой обмен репликами между участниками: {participant_names}.\n"
             f"Придумай любую житейскую ситуацию в убежище (еда, погода, бытовая скука, мелкие подколы).\n"
-            f"ФОРМАТ: **Имя**: текст\n"
+            f"ФОРМАТ: **Имя**: текст (каждая реплика с новой строки)\n"
             f"4–6 коротких естественных реплик."
         )
     else:
         user_content = (
             f"Напиши короткий бытовой обмен репликами между участниками: {participant_names}.\n"
             f"Фоновый повод для начала (упомяни вскользь в первой реплике и переключись на взаимные подколы или бытовуху, НЕ мусоль тему): {seed}\n"
-            f"ФОРМАТ: **Имя**: текст\n"
+            f"ФОРМАТ: **Имя**: текст (каждая реплика с новой строки)\n"
             f"4–6 коротких естественных реплик."
         )
     prompt = [
@@ -533,6 +536,7 @@ async def send_akatsuki_banter():
     if response:
         response = strip_reasoning(response)
         if response:
+            response = fix_bad_format(response, AKATSUKI_MEMBERS[participants[0]]['name'])
             try:
                 await channel.send(response)
                 add_to_history(channel.id, "assistant", response)
@@ -597,6 +601,7 @@ async def send_holiday_greeting(holiday_name: str):
     if response:
         response = strip_reasoning(response)
         if response:
+            response = fix_bad_format(response, AKATSUKI_MEMBERS[participants[0]]['name'])
             final_text = f"🎉 {holiday_name}! 🎉\n{response}"
             await channel.send(final_text)
             add_to_history(channel.id, "assistant", final_text)
@@ -620,6 +625,7 @@ async def send_no_holiday_comment():
     if response:
         response = strip_reasoning(response)
         if response:
+            response = fix_bad_format(response, AKATSUKI_MEMBERS[participants[0]]['name'])
             await channel.send(response)
             add_to_history(channel.id, "assistant", response)
 
@@ -678,6 +684,7 @@ async def send_birthday_message(uid, data):
     if response:
         response = strip_reasoning(response)
         if response:
+            response = fix_bad_format(response, AKATSUKI_MEMBERS[participants[0]]['name'])
             final_text = f"🎂 {name}\n{response}"
             await channel.send(final_text)
             add_to_history(channel.id, "assistant", final_text)
@@ -714,6 +721,7 @@ async def send_character_birthday(character_id: str):
     if response:
         response = strip_reasoning(response)
         if response:
+            response = fix_bad_format(response, AKATSUKI_MEMBERS[participants[0]]['name'])
             final_text = f"🎂 Сегодня день рождения **{birthday_char_name}**! 🎂\n{response}"
             await channel.send(final_text)
             add_to_history(channel.id, "assistant", final_text)
@@ -967,12 +975,16 @@ async def on_message(message):
 
     history = conversation_history.get(message.channel.id, [])[-MAX_HISTORY_MESSAGES:]
 
+    if len(responders) == 1:
+        length_rule = f"Напиши РОВНО ОДНУ реплику от лица {AKATSUKI_MEMBERS[responders[0]]['name']} (не дублируй его имя дважды)."
+    else:
+        length_rule = f"Участвуют: {format_character_names(responders)}. Каждая реплика — с новой строки, минимум по одной от каждого."
+
     user_context = f"""Ты отвечаешь на сообщение от пользователя "{message.author.display_name}".
 Его сообщение: {message.content}
-Отвечают: {format_character_names(responders)}
+{length_rule}
 {extra_context}
 ФОРМАТ: **Имя**: текст
-Минимум 2 сообщения если персонажей несколько.
 Не перепутай с другими пользователями, которые писали ранее. Отвечай именно {message.author.display_name}."""
 
     if server_emojis:
