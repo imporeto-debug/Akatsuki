@@ -1,4 +1,3 @@
-
 import os, re, json, random
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -17,8 +16,23 @@ def load_config():
         raise RuntimeError("Не удалось загрузить конфигурацию")
 
 CONFIG = load_config()
+
+SECRETS_FILE = CONFIG.get("secrets_file", "secrets.json")
+
+def load_secrets():
+    if os.path.exists(SECRETS_FILE):
+        try:
+            with open(SECRETS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"❌ Ошибка чтения {SECRETS_FILE}: {e}")
+    return {}
+
+SECRETS = load_secrets()
+
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_API_KEY = SECRETS.get("proxy_token") or os.getenv("DEEPSEEK_API_KEY")
+
 if not DISCORD_TOKEN or not DEEPSEEK_API_KEY:
     raise RuntimeError("Missing DISCORD_TOKEN or DEEPSEEK_API_KEY")
 
