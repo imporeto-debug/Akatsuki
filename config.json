@@ -25,6 +25,7 @@
   },
   "users_file": "users.json",
   "character_prompts_file": "character_prompts.json",
+  "secrets_file": "secrets.json",
   "deepseek": {
     "url": "https://api.reformboss.com/v1/chat/completions",
     "model": "deepseek-v4.1-flash-1017"
