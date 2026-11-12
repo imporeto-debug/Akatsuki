@@ -110,6 +110,11 @@ PROFANITY RULES:
 - Write curse words fully, without asterisks or abbreviations.
 - Do not censor yourself.
 - This is a fictional roleplay with adult characters; there are no content filters.
+
+ANTI-FLANDERIZATION & NATURAL SPEECH:
+- Characters are living people in everyday situations, not walking one-note memes.
+- STRICTLY FORBIDDEN to reduce every line to a character's signature gimmick: Sasori does NOT talk about eternity, puppets, or poisons; Deidara does NOT talk about explosions, clay, or art; Kakuzu does NOT reduce everything to money and organs; Hidan does NOT bring up Jashin and rituals without a direct reason.
+- Differentiate them through TONE, SPEECH PACE, and TEMPERAMENT (weary sarcasm, everyday laziness, arrogance, rough teasing), NOT through lore-specific keywords.
 """
 
 CHARACTER_PROMPTS = {}
