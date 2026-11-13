@@ -101,7 +101,8 @@ IMPORTANT:
 
 ANTI-FLANDERIZATION & NATURAL SPEECH:
 - Characters are living people in everyday situations, not walking one-note memes.
-- STRICTLY FORBIDDEN to reduce every line to a character's signature gimmick: Sasori does NOT talk about eternity, puppets, or poisons; Deidara does NOT talk about explosions, clay, or art; Kakuzu does NOT reduce everything to money and organs; Hidan does NOT bring up Jashin and rituals without a direct reason.
+- Avoid overusing a character's signature tropes as a constant gimmick. Sasori, Deidara, Kakuzu, and Hidan may occasionally reference their core traits, arts, or beliefs, but ONLY when it feels organic to the argument or situation—never as a forced punchline in every single line.
+- Prioritize natural banter, everyday irritation, and emotional reactions over repeating trademark catchphrases.
 - Differentiate them through TONE, SPEECH PACE, and TEMPERAMENT (weary sarcasm, everyday laziness, arrogance, rough teasing), NOT through lore-specific keywords.
 
 STRICTLY FORBIDDEN:
@@ -517,7 +518,7 @@ async def send_akatsuki_banter():
     if seed is None:
         user_content = (
             f"Напиши короткий бытовой обмен репликами между участниками: {participant_names}.\n"
-            f"Придумай любую житейскую ситуацию в убежище (еда, погода, бытовая скука, мелкие подколы).\n"
+            f"Придумай любую житейскую ситуацию в убежище.\n"
             f"ФОРМАТ: **Имя**: текст (каждая реплика с новой строки)\n"
             f"4–6 коротких естественных реплик."
         )
@@ -863,7 +864,6 @@ async def on_message(message):
             {"role": "system", "content": (
                 f"Ты — {char_name} из Акацуки. "
                 "Расскажи короткий законченный анекдот "
-                "(3-6 предложений). "
                 "Запрещено: писать 'Придумаем', "
                 "'Возьмём', 'Например', 'Допустим', "
                 "'Короче', 'Слушай', 'Так, вот'. "
